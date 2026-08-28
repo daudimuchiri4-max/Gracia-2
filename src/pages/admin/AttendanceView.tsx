@@ -345,7 +345,7 @@ export const AttendanceView: React.FC = () => {
     }
   };
 
-  // Instant Zero-Latency Audio Beep Chime
+  // Authentic Supermarket POS & Thermo Scanner Piezo Audio Feedback
   const playBeep = (success: boolean) => {
     if (!soundEnabled) return;
     try {
@@ -355,46 +355,73 @@ export const AttendanceView: React.FC = () => {
       const now = audioCtx.currentTime;
 
       if (success) {
-        // Bright, crisp positive dual-tone chime (E5 659Hz -> A5 880Hz)
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
+        // Classic Supermarket / Infrared Thermo Scanner Beep
+        // 2730 Hz resonant piezo frequency with subtle harmonic overtone (65ms punchy pulse)
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        const gain2 = audioCtx.createGain();
 
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(659.25, now);
-        osc.frequency.setValueAtTime(880.0, now + 0.07);
+        // Primary 2730Hz scanner tone
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(2730, now);
 
-        gain.gain.setValueAtTime(0.18, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        // Instant attack, sustained chirp, snappy release
+        gain1.gain.setValueAtTime(0.0001, now);
+        gain1.gain.linearRampToValueAtTime(0.28, now + 0.002);
+        gain1.gain.setValueAtTime(0.28, now + 0.05);
+        gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.068);
 
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
+        // Secondary subtle harmonic overtone for physical piezo realism (5460Hz)
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(5460, now);
+        gain2.gain.setValueAtTime(0.0001, now);
+        gain2.gain.linearRampToValueAtTime(0.035, now + 0.002);
+        gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
 
-        osc.start(now);
-        osc.stop(now + 0.22);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+
+        osc1.start(now);
+        osc1.stop(now + 0.07);
+        osc2.start(now);
+        osc2.stop(now + 0.07);
       } else {
-        // Crisp gentle rejection buzz (220Hz)
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
+        // Supermarket POS / Thermo Scanner Error Tone (Double low-pulse alert)
+        // First low pulse (330Hz, 70ms)
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(330, now);
+        gain1.gain.setValueAtTime(0.22, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.075);
 
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(261.63, now); // C4
-        osc.frequency.setValueAtTime(220.0, now + 0.08); // A3
-
-        gain.gain.setValueAtTime(0.18, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-
-        osc.start(now);
-        osc.stop(now + 0.2);
+        // Second lower pulse (260Hz, 85ms) after brief 45ms gap
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(260, now + 0.115);
+        gain2.gain.setValueAtTime(0.001, now);
+        gain2.gain.setValueAtTime(0.22, now + 0.115);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.start(now + 0.115);
+        osc2.stop(now + 0.21);
       }
     } catch {
       // Audio optional
     }
   };
 
-  // Clear Standard English Spoken Announcement
+  // Clear High-Quality Standard English Spoken Announcement
   const speakGreeting = (text: string) => {
     if (!soundEnabled) return;
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -404,11 +431,27 @@ export const AttendanceView: React.FC = () => {
       const utterance = new SpeechSynthesisUtterance(text);
 
       const voices = window.speechSynthesis.getVoices();
-      // Select crisp, natural standard English voice (US / GB / AU / CA or default clear English)
+      // Select premium natural standard English voices (Google Natural, Microsoft, Apple, Commonwealth/US)
       const englishVoice =
-        voices.find((v) => v.lang === 'en-US' && !v.name.includes('Bad') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Zira') || v.name.includes('David') || v.name.includes('Jenny') || v.name.includes('Guy'))) ||
+        voices.find(
+          (v) =>
+            v.lang.startsWith('en') &&
+            (v.name.includes('Natural') ||
+              v.name.includes('Online') ||
+              v.name.includes('Google') ||
+              v.name.includes('Samantha') ||
+              v.name.includes('Karen') ||
+              v.name.includes('Daniel') ||
+              v.name.includes('Serena') ||
+              v.name.includes('Arthur') ||
+              v.name.includes('Jenny') ||
+              v.name.includes('Guy') ||
+              v.name.includes('Zira') ||
+              v.name.includes('David'))
+        ) ||
         voices.find((v) => v.lang === 'en-US') ||
-        voices.find((v) => v.lang === 'en-GB' || v.lang === 'en-AU' || v.lang === 'en-CA') ||
+        voices.find((v) => v.lang === 'en-GB') ||
+        voices.find((v) => v.lang === 'en-AU') ||
         voices.find((v) => v.lang.startsWith('en')) ||
         voices[0];
 
@@ -419,8 +462,8 @@ export const AttendanceView: React.FC = () => {
         utterance.lang = 'en-US';
       }
 
-      utterance.rate = 1.02; // Natural, clear, responsive pace
-      utterance.pitch = 1.0;  // Balanced natural pitch
+      utterance.rate = 1.0;  // Balanced, natural human conversational pace
+      utterance.pitch = 1.0; // Clear, natural standard pitch
       utterance.volume = 1.0;
 
       window.speechSynthesis.speak(utterance);
@@ -636,6 +679,8 @@ export const AttendanceView: React.FC = () => {
             f.admissionNumber.toLowerCase().trim() === matched.admissionNumber.toLowerCase().trim()
         );
 
+      const firstName = matched.firstName || (matched.fullName ? matched.fullName.trim().split(/\s+/)[0] : 'Learner');
+
       if (alreadyChecked) {
         const checkedTime =
           alreadyChecked.timestamp || (alreadyChecked as any).time || 'Earlier today';
@@ -649,8 +694,8 @@ export const AttendanceView: React.FC = () => {
         // Warning tone for duplicate
         playBeep(false);
 
-        // Standard English voice: "[student name] is already checked in."
-        speakGreeting(`${matched.fullName} is already checked in.`);
+        // Standard English voice: "[First Name] is already checked in."
+        speakGreeting(`${firstName} is already checked in.`);
 
         showToast(`${matched.fullName} has ALREADY checked in today (${checkedTime}).`, 'warning');
         return;
@@ -669,8 +714,8 @@ export const AttendanceView: React.FC = () => {
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const isLate = now.getHours() > 8; // After 8:00 AM
 
-      // Speak Clear Standard English Greeting: "Welcome, [student name]!"
-      speakGreeting(`Welcome, ${matched.fullName}.`);
+      // Speak Clear Standard English Greeting: "Welcome to Gracia Learning Centre, [First Name]!"
+      speakGreeting(`Welcome to Gracia Learning Centre, ${firstName}.`);
 
       // Update in-memory tracking map so subsequent scans immediately know
       setCheckedInTodayMap((prev) => ({
