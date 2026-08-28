@@ -372,12 +372,24 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
 
           {/* Center Navigation Links */}
           <nav className="hidden lg:flex items-center gap-6 text-xs font-bold text-slate-600">
-            <a href="#about" className="hover:text-blue-900 transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="hover:text-blue-900 transition-colors cursor-pointer"
+            >
               About
-            </a>
-            <a href="#facilities" className="hover:text-blue-900 transition-colors">
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('facilities')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="hover:text-blue-900 transition-colors cursor-pointer"
+            >
               Facilities
-            </a>
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -387,9 +399,15 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
             >
               <DollarSign className="w-3.5 h-3.5" /> Fee Structure
             </button>
-            <a href="#faqs" className="hover:text-blue-900 transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('faqs')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="hover:text-blue-900 transition-colors cursor-pointer"
+            >
               FAQs
-            </a>
+            </button>
           </nav>
 
           {/* Single Google Login Button / Portal Buttons */}
@@ -401,7 +419,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
                 setIsAuthModalOpen(true);
               }}
               className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold shadow-2xs transition-all cursor-pointer"
-              title="Sign in with your registered Google Account"
+              title="Sign in with your registered Google Account or credentials"
             >
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                 <path
@@ -422,7 +440,9 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
                 />
               </svg>
               <span className="truncate max-w-[120px] sm:max-w-none">
-                {user && user.email ? (user.displayName || 'Google Account') : 'Google Login'}
+                {user && user.email && user.id !== 'demo-admin-id'
+                  ? user.fullName || user.email
+                  : 'Portal Sign-In'}
               </span>
             </button>
           </div>
@@ -529,7 +549,17 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
               <Button
                 variant="primary"
                 size="lg"
-                onClick={() => setIsAdmissionModalOpen(true)}
+                onClick={() => {
+                  if (currentSlide?.buttonLink === 'facilities') {
+                    document.getElementById('facilities')?.scrollIntoView({ behavior: 'smooth' });
+                  } else if (currentSlide?.buttonLink === 'fees') {
+                    document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' });
+                  } else if (currentSlide?.buttonLink === 'about') {
+                    document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' });
+                  } else {
+                    setIsAdmissionModalOpen(true);
+                  }
+                }}
                 icon={<ArrowRight className="w-4 h-4" />}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xl cursor-pointer"
               >
@@ -973,26 +1003,38 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
 
           <div className="flex flex-wrap gap-4">
             <button
-              onClick={() => onEnterPortal('SCHOOL_ADMIN')}
-              className="hover:text-white cursor-pointer font-semibold text-slate-300"
+              onClick={() => {
+                setAuthModalRole('SCHOOL_ADMIN');
+                setIsAuthModalOpen(true);
+              }}
+              className="hover:text-white cursor-pointer font-semibold text-slate-300 transition-colors"
             >
               Admin Portal
             </button>
             <button
-              onClick={() => onEnterPortal('TEACHER')}
-              className="hover:text-white cursor-pointer font-semibold text-slate-300"
+              onClick={() => {
+                setAuthModalRole('TEACHER');
+                setIsAuthModalOpen(true);
+              }}
+              className="hover:text-white cursor-pointer font-semibold text-slate-300 transition-colors"
             >
               Teacher Portal
             </button>
             <button
-              onClick={() => onEnterPortal('PARENT')}
-              className="hover:text-white cursor-pointer font-semibold text-slate-300"
+              onClick={() => {
+                setAuthModalRole('PARENT');
+                setIsAuthModalOpen(true);
+              }}
+              className="hover:text-white cursor-pointer font-semibold text-slate-300 transition-colors"
             >
               Parent Portal
             </button>
             <button
-              onClick={() => onEnterPortal('ACCOUNTANT')}
-              className="hover:text-white cursor-pointer font-semibold text-slate-300"
+              onClick={() => {
+                setAuthModalRole('SCHOOL_ADMIN');
+                setIsAuthModalOpen(true);
+              }}
+              className="hover:text-white cursor-pointer font-semibold text-slate-300 transition-colors"
             >
               Bursar & Finance
             </button>
