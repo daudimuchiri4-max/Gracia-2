@@ -31,6 +31,7 @@ import { Student, School, Invoice, Payment, ReportCard, CBCRating } from '../../
 import { feeService } from '../../services/feeAndPaymentService';
 import { assessmentService } from '../../services/assessmentAndAttendanceService';
 import { generateStudentQrCode } from '../../utils/qrCodeGenerator';
+import { printerService } from '../../services/printerService';
 
 interface StudentProfileModalProps {
   isOpen: boolean;
@@ -591,15 +592,32 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
         {/* Tab 6: Learner Student ID Card */}
         {activeTab === 'idcard' && (
           <div className="space-y-4 text-xs">
-            <div className="flex justify-end">
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<Printer className="w-4 h-4" />}
-                onClick={() => window.print()}
-              >
-                Print Student ID Badge
-              </Button>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Digital CBC Gate Pass & Student Identity Card</span>
+              <div className="flex items-center gap-2">
+                {studentQrCodeUrl && (
+                  <a
+                    href={studentQrCodeUrl}
+                    download={`Badge-QR-${student.admissionNumber.replace(/\//g, '-')}.png`}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors"
+                  >
+                    <QrCode className="w-3.5 h-3.5 text-blue-900" />
+                    Download QR
+                  </a>
+                )}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Printer className="w-4 h-4" />}
+                  onClick={() => {
+                    if (student) {
+                      printerService.printStudentIDCard(student, school);
+                    }
+                  }}
+                >
+                  Print Student ID Badge
+                </Button>
+              </div>
             </div>
 
             {/* Printable ID Card Graphic */}
@@ -648,14 +666,14 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-blue-800/80 flex items-center justify-between text-[10px] text-blue-300">
+              <div className="pt-2.5 border-t border-blue-800/80 flex items-center justify-between text-[10px] text-blue-300">
                 <span>Emergency: {student.parentPhone || '+254 722 345 678'}</span>
                 {studentQrCodeUrl ? (
-                  <div className="w-10 h-10 p-0.5 bg-white rounded-md shadow-xs shrink-0">
+                  <div className="w-14 h-14 p-1 bg-white rounded-lg shadow-xs shrink-0 border border-slate-300">
                     <img src={studentQrCodeUrl} alt="QR Code" className="w-full h-full object-contain" />
                   </div>
                 ) : (
-                  <QrCode className="w-6 h-6 text-white" />
+                  <QrCode className="w-8 h-8 text-white" />
                 )}
               </div>
             </div>

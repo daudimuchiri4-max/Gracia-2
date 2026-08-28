@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @media print {
-  /* Hide all non-printable UI elements */
+  /* Hide all background and non-printable application shell elements */
   nav,
   header,
   aside,
@@ -12,29 +12,56 @@
   button,
   .btn,
   .modal-backdrop,
-  [role="dialog"] > div:first-child,
   .toast-container {
     display: none !important;
   }
 
-  body {
+  /* Reset body and remove default margins */
+  html, body {
     background: #ffffff !important;
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* If a modal is open during print, hide background dashboard siblings */
+  body:has(.fixed.inset-0) > div:not(:has(.fixed.inset-0)) {
+    display: none !important;
+  }
+
+  /* Make fixed modal wrapper static and clean */
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  .fixed.inset-0 > div {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
   }
 
   /* Printable container styling */
   #printable-receipt,
   #printable-reportcard,
+  #printable-fee-structure,
+  #printable-id-card,
   .printable-area {
     display: block !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+    position: static !important;
     width: 100% !important;
     margin: 0 !important;
-    padding: 10px !important;
+    padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
     background: #ffffff !important;
@@ -50,3 +77,4 @@
     page-break-inside: avoid;
   }
 }
+

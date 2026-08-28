@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
@@ -442,14 +443,35 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
+
+    // Development SPA Fallback: Serve transformed index.html for all non-API GET routes on page refresh
+    app.use('*', async (req: Request, res: Response, next) => {
+      // Don't intercept API or health routes
+      if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/health')) {
+        return res.status(404).json({ error: 'API route not found' });
+      }
+
+      try {
+        const indexPath = path.resolve(process.cwd(), 'index.html');
+        let template = fs.readFileSync(indexPath, 'utf-8');
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e: any) {
+        vite.ssrFixStacktrace(e);
+        next(e);
+      }
+    });
   } else {
     // Production mode: Serve compiled static files from dist/
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
 
     // Client-Side SPA Fallback: Map all unmatched GET routes to index.html
-    // Handles /login, /admin, /teacher, /parent, /learner, /admissions, /fees, etc.
+    // Handles /login, /admin, /teacher, /parent, /learner, /admissions, /fees, /students, etc.
     app.get('*', (req: Request, res: Response) => {
+      if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/health')) {
+        return res.status(404).json({ error: 'API route not found' });
+      }
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

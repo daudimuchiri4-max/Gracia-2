@@ -7,7 +7,7 @@
  * 4. System / Network Print Driver (Formatted 80mm, 58mm, A4, and ID Card layouts via browser/OS driver)
  */
 
-import { School, Payment, Student, ReportCard } from '../types';
+import { School, Payment, Student, ReportCard, FeeStructure } from '../types';
 
 export type PaperWidth = '80mm' | '58mm' | 'A4';
 
@@ -474,6 +474,48 @@ class PrinterService {
   public printStudentIDCard(student: Student, school: School | null): void {
     const html = this.generateStudentIDCardHtml(student, school);
     this.printViaIframe(html, 'ID_CARD', `ID_Card_${student.admissionNumber.replace(/\//g, '_')}`);
+  }
+
+  /**
+   * Print Official Institutional Fee Schedule on Clean Single-Page A4
+   */
+  public printFeeStructure(structure: FeeStructure, school: School | null): void {
+    const html = this.generateFeeStructureHtml(structure, school);
+    this.printA4Document(html, `Fee_Schedule_${structure.classLevel.replace(/\s+/g, '_')}_${structure.term.replace(/\s+/g, '_')}`);
+  }
+
+  /**
+   * Universal Helper: Print any target DOM element in a clean, isolated frame
+   */
+  public printTargetElement(elementId: string, documentTitle: string = 'Document'): void {
+    const el = document.getElementById(elementId);
+    if (!el) {
+      window.print();
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>${documentTitle}</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #0f172a; background: #fff; line-height: 1.5; font-size: 12px; }
+          button, .no-print, nav, header { display: none !important; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { padding: 8px; border: 1px solid #e2e8f0; }
+          th { background: #f1f5f9; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        ${el.innerHTML}
+      </body>
+      </html>
+    `;
+    this.printViaIframe(html, 'A4', documentTitle);
   }
 
   /**
@@ -1019,6 +1061,118 @@ class PrinterService {
           <div class="card-footer">
             <span>Principal's Signature: <em>Verified</em></span>
             <span style="font-weight: bold; color: #0f172a;">KENYA CBC</span>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * HTML Template: Official Institutional Fee Schedule (A4 single page)
+   */
+  private generateFeeStructureHtml(structure: FeeStructure, school: School | null): string {
+    const items = structure.items || [];
+    const total = structure.totalAmount || items.reduce((sum, it) => sum + (it.amount || 0), 0);
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Official Fee Schedule - ${structure.classLevel} (${structure.term} ${structure.academicYear})</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a; background: #fff; line-height: 1.5; font-size: 13px; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
+          .school-title { font-size: 22px; font-weight: 900; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px; }
+          .school-sub { font-size: 11px; color: #475569; margin-top: 2px; }
+          .badge { display: inline-block; background: #0f172a; color: #fff; padding: 5px 12px; font-size: 12px; font-weight: bold; border-radius: 4px; text-transform: uppercase; }
+          .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+          .meta-class { font-size: 15px; font-weight: 800; color: #0f172a; }
+          .meta-curr { font-size: 12px; color: #64748b; font-weight: 600; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 22px; font-size: 13px; }
+          th { background: #0f172a; color: #fff; text-align: left; padding: 10px 14px; font-weight: bold; }
+          td { border: 1px solid #e2e8f0; padding: 10px 14px; }
+          tr:nth-child(even) { background: #f8fafc; }
+          .total-row { background: #eff6ff !important; font-weight: 900; color: #1e3a8a; font-size: 14px; }
+          .payment-channels { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 15px; margin-bottom: 25px; }
+          .channel-title { font-size: 12px; font-weight: bold; color: #0f172a; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+          .channels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+          .channel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; }
+          .channel-name { font-size: 11px; font-weight: 800; color: #065f46; text-transform: uppercase; margin-bottom: 4px; }
+          .channel-detail { font-size: 11.5px; color: #334155; }
+          .footer-box { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #cbd5e1; padding-top: 18px; margin-top: 15px; }
+          .stamp-box { border: 2px dashed #94a3b8; width: 140px; height: 65px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-weight: bold; text-align: center; text-transform: uppercase; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="school-title">${school?.name || 'Gracia Learning Centre'}</div>
+            <div class="school-sub">${school?.motto || 'Nurturing Potential, Inspiring Excellence'}</div>
+            <div class="school-sub">${school?.address || 'Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'} • Email: ${school?.email || 'admissions@gracialearningcentre.ac.ke'}</div>
+          </div>
+          <div style="text-align: right;">
+            <div class="badge">${structure.term} ${structure.academicYear}</div>
+            <div style="font-size: 10.5px; color: #64748b; margin-top: 4px;">Institutional Fee Schedule</div>
+          </div>
+        </div>
+
+        <div class="meta-box">
+          <div class="meta-class">Target Class: <strong>${structure.classLevel}</strong></div>
+          <div class="meta-curr">Curriculum: Kenya CBC 2-6-3-3-3</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 70%;">Fee Vote Head Description</th>
+              <th style="width: 30%; text-align: right;">Amount (${school?.currencySymbol || 'KSh'})</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items
+              .map(
+                (item) => `
+              <tr>
+                <td style="font-weight: 500;">${item.name}</td>
+                <td style="text-align: right; font-family: monospace; font-weight: bold;">${(item.amount || 0).toLocaleString()}</td>
+              </tr>
+            `
+              )
+              .join('')}
+            <tr class="total-row">
+              <td>TOTAL TERMLY FEE</td>
+              <td style="text-align: right; font-family: monospace;">${school?.currencySymbol || 'KSh'} ${total.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="payment-channels">
+          <div class="channel-title">Official School Payment Channels</div>
+          <div class="channels-grid">
+            <div class="channel-card">
+              <div class="channel-name" style="color: #065f46;">M-PESA PAYBILL</div>
+              <div class="channel-detail">Business No: <strong>522522</strong></div>
+              <div class="channel-detail">Account No: <strong>[Learner Admission Number]</strong></div>
+            </div>
+            <div class="channel-card">
+              <div class="channel-name" style="color: #1e3a8a;">EQUITY BANK ACCOUNT</div>
+              <div class="channel-detail">Account Name: <strong>${school?.name || 'Gracia Learning Centre'}</strong></div>
+              <div class="channel-detail">Account No: <strong>${school?.paymentSettings?.bankAccountNumber || '0180293847192'}</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-box">
+          <div>
+            <div style="font-size: 11px; color: #475569;">Issued by: <strong>Bursar / Accounts Office</strong></div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Payment slips & M-Pesa codes must be submitted to the accounts office for official receipting.</div>
+          </div>
+          <div class="stamp-box">
+            Official School Stamp & Seal
           </div>
         </div>
       </body>

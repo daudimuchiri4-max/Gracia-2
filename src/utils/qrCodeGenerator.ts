@@ -17,7 +17,7 @@ export const generateStudentQrCode = async (data: StudentQrData): Promise<string
       margin: 2,
       width: 256,
       color: {
-        dark: '#1e3a8a', // Deep Blue
+        dark: '#000000', // Pure Black for maximum contrast and universal optical scanner readability
         light: '#ffffff',
       },
     });

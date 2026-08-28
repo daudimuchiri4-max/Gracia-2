@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import jsQR from 'jsqr';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { studentService } from '../../services/studentService';
 import { attendanceService } from '../../services/assessmentAndAttendanceService';
+import { printerService } from '../../services/printerService';
 import { generateStudentQrCode, parseQrAttendancePayload } from '../../utils/qrCodeGenerator';
 import { Student, AttendanceRecord, GradeLevel } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -24,13 +25,15 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
-  UserCheck,
-  Zap,
   FlipHorizontal,
   Upload,
   Volume2,
   VolumeX,
   RefreshCw,
+  ExternalLink,
+  Download,
+  Eye,
+  Keyboard,
 } from 'lucide-react';
 
 const GRADE_LEVELS: GradeLevel[] = [
@@ -50,6 +53,7 @@ const GRADE_LEVELS: GradeLevel[] = [
 
 interface LiveScanEvent {
   id: string;
+  studentId?: string;
   studentName: string;
   admissionNumber: string;
   classLevel: string;
@@ -78,18 +82,28 @@ export const AttendanceView: React.FC = () => {
   // QR Scanner State
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+  const [availableCameras, setAvailableCameras] = useState<{ id: string; label: string }[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [usbInput, setUsbInput] = useState<string>('');
   const [lastScannedStudent, setLastScannedStudent] = useState<Student | null>(null);
+  const [alreadyCheckedInAlert, setAlreadyCheckedInAlert] = useState<{
+    student: Student;
+    time: string;
+    status: 'PRESENT' | 'LATE';
+  } | null>(null);
+  const [checkedInTodayMap, setCheckedInTodayMap] = useState<
+    Record<string, { time: string; status: 'PRESENT' | 'LATE'; studentName: string }>
+  >({});
   const [scanFeed, setScanFeed] = useState<LiveScanEvent[]>([]);
   const [scanFlash, setScanFlash] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [isProcessingFile, setIsProcessingFile] = useState<boolean>(false);
   const [testStudentId, setTestStudentId] = useState<string>('');
+  const [previewBadgeStudent, setPreviewBadgeStudent] = useState<Student | null>(null);
+  const [previewBadgeQrUrl, setPreviewBadgeQrUrl] = useState<string>('');
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const lastScanCodeRef = useRef<string>('');
   const lastScanTimeRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -101,7 +115,54 @@ export const AttendanceView: React.FC = () => {
   useEffect(() => {
     if (!school?.id) return;
     loadAllStudents();
+    loadTodayAttendanceCheckIns();
   }, [school?.id]);
+
+  const loadTodayAttendanceCheckIns = async () => {
+    if (!school?.id) return;
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const todayRecords = await attendanceService.getAttendanceRecords(school.id, {
+        date: todayStr,
+      });
+      const map: Record<string, { time: string; status: 'PRESENT' | 'LATE'; studentName: string }> = {};
+      const feed: LiveScanEvent[] = [];
+
+      todayRecords.forEach((rec) => {
+        rec.entries.forEach((ent) => {
+          if (ent.status === 'PRESENT' || ent.status === 'LATE') {
+            const timeMatch = ent.remarks?.match(/\((.*?)\)/);
+            const timeVal = timeMatch ? timeMatch[1] : 'Morning Session';
+            map[ent.studentId] = {
+              time: timeVal,
+              status: ent.status,
+              studentName: ent.studentName,
+            };
+            feed.push({
+              id: `rec-${ent.studentId}-${Date.now()}`,
+              studentId: ent.studentId,
+              studentName: ent.studentName,
+              admissionNumber: ent.admissionNumber,
+              classLevel: `${rec.classLevel} ${rec.stream || ''}`.trim(),
+              timestamp: timeVal,
+              status: ent.status,
+            });
+          }
+        });
+      });
+
+      setCheckedInTodayMap((prev) => ({ ...prev, ...map }));
+      if (feed.length > 0) {
+        setScanFeed((prev) => {
+          const existingIds = new Set(prev.map((p) => p.studentId));
+          const newItems = feed.filter((f) => !existingIds.has(f.studentId));
+          return [...prev, ...newItems].slice(0, 30);
+        });
+      }
+    } catch (err) {
+      console.warn('Silent load of today checkins:', err);
+    }
+  };
 
   useEffect(() => {
     if (!school?.id) return;
@@ -135,6 +196,24 @@ export const AttendanceView: React.FC = () => {
       }
     }
   }, [students, school?.id]);
+
+  // Query connected cameras when scanner tab is opened
+  useEffect(() => {
+    if (activeTab === 'QR_SCANNER') {
+      Html5Qrcode.getCameras()
+        .then((cameras) => {
+          if (cameras && cameras.length > 0) {
+            setAvailableCameras(cameras);
+            if (!selectedCameraId) {
+              setSelectedCameraId(cameras[0].id);
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn('Camera enumeration error (safe fallback):', err);
+        });
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     return () => {
@@ -286,172 +365,143 @@ export const AttendanceView: React.FC = () => {
     }
   };
 
-  // Camera & QR Scanner Logic using BarcodeDetector + jsQR
-  const startCamera = async (facing: 'environment' | 'user' = cameraFacing) => {
-    setCameraError(null);
-    stopCamera();
+  // Kenyan English Spoken Greeting / Audio Announcement
+  const speakGreeting = (text: string) => {
+    if (!soundEnabled) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
     try {
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: facing ? { ideal: facing } : 'environment',
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-          },
-          audio: false,
-        });
-      } catch {
-        // Fallback if specific ideal constraints are unsupported
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
 
-      mediaStreamRef.current = stream;
-      setIsCameraActive(true);
+      const voices = window.speechSynthesis.getVoices();
+      // Look for Kenya English (en-KE), Commonwealth / African English accents, then fallback
+      const kenyaVoice =
+        voices.find((v) => v.lang === 'en-KE' || v.lang.toLowerCase().includes('ke')) ||
+        voices.find((v) => v.lang === 'en-GB' || v.lang === 'en-ZA' || v.lang === 'en-NG' || v.lang.startsWith('en')) ||
+        voices[0];
 
-      // Attach stream to video element and start stream playback
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        video.setAttribute('playsinline', 'true');
-        video.muted = true;
-        try {
-          await video.play();
-        } catch (playErr) {
-          console.warn('Video auto-play handled:', playErr);
-        }
-      }
-
-      startScanningLoop();
-    } catch (err: any) {
-      console.error('Camera access error:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('Camera permission was denied. Please grant camera permission in your browser address bar.');
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setCameraError('No camera device found on this system. You can upload a QR image or enter the admission number below.');
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        setCameraError('Camera is currently busy or in use by another browser tab or app.');
+      if (kenyaVoice) {
+        utterance.voice = kenyaVoice;
+        utterance.lang = kenyaVoice.lang || 'en-KE';
       } else {
-        setCameraError('Unable to access device camera. You can also upload a QR photo or enter the admission number below.');
+        utterance.lang = 'en-KE';
       }
-      setIsCameraActive(false);
+
+      utterance.rate = 0.95; // Warm, natural school pace
+      utterance.pitch = 1.05; // Friendly and upbeat
+      utterance.volume = 1.0;
+
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn('Speech synthesis not available:', err);
     }
   };
 
-  const stopCamera = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+  // Start Camera Scanner using Html5Qrcode engine
+  const startCamera = async (targetCameraId?: string) => {
+    setCameraError(null);
+    await stopCamera();
+
+    try {
+      const readerElem = document.getElementById('gate-qr-reader');
+      if (!readerElem) {
+        throw new Error('Scanner container element not found');
+      }
+
+      const html5QrCode = new Html5Qrcode('gate-qr-reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+        ],
+        verbose: false,
+      });
+      html5QrCodeRef.current = html5QrCode;
+
+      const config = {
+        fps: 15,
+        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const qrboxSize = Math.floor(minEdge * 0.75);
+          return {
+            width: Math.max(200, Math.min(320, qrboxSize)),
+            height: Math.max(200, Math.min(320, qrboxSize)),
+          };
+        },
+        aspectRatio: 1.333334,
+      };
+
+      const cameraSelection = targetCameraId || selectedCameraId || { facingMode: cameraFacing };
+
+      await html5QrCode.start(
+        cameraSelection,
+        config,
+        (decodedText: string) => {
+          const rawData = decodedText.trim();
+          const now = Date.now();
+          // Debounce same code within 3 seconds
+          if (rawData !== lastScanCodeRef.current || now - lastScanTimeRef.current > 3000) {
+            lastScanCodeRef.current = rawData;
+            lastScanTimeRef.current = now;
+            handleProcessScannedCode(rawData);
+          }
+        },
+        (errorMessage: string) => {
+          // Standard scanning frame noise, ignore
+        }
+      );
+
+      setIsCameraActive(true);
+    } catch (err: any) {
+      console.error('Camera startup error:', err);
+      setIsCameraActive(false);
+
+      if (err?.name === 'NotAllowedError' || err?.message?.includes('Permission denied')) {
+        setCameraError('Camera permission was denied. Please allow camera access in your browser address bar.');
+      } else if (err?.name === 'NotFoundError' || err?.message?.includes('No camera')) {
+        setCameraError('No webcam or camera device detected. You can upload a QR badge image or type the admission number below.');
+      } else if (err?.name === 'NotReadableError') {
+        setCameraError('Camera device is busy in another app or tab.');
+      } else {
+        setCameraError(err?.message || 'Unable to start camera scanner. Try uploading a photo of the QR code or select a student below.');
+      }
     }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
+  };
+
+  const stopCamera = async () => {
+    if (html5QrCodeRef.current) {
+      try {
+        if (html5QrCodeRef.current.isScanning) {
+          await html5QrCodeRef.current.stop();
+        }
+        await html5QrCodeRef.current.clear();
+      } catch (err) {
+        console.warn('Silent camera stop catch:', err);
+      }
+      html5QrCodeRef.current = null;
     }
     setIsCameraActive(false);
   };
 
-  const toggleCameraFacing = () => {
+  const toggleCameraFacing = async () => {
     const nextFacing = cameraFacing === 'environment' ? 'user' : 'environment';
     setCameraFacing(nextFacing);
     if (isCameraActive) {
-      startCamera(nextFacing);
+      await stopCamera();
+      await startCamera(undefined);
     }
   };
 
-  const startScanningLoop = () => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+  const handleCameraChange = async (newCamId: string) => {
+    setSelectedCameraId(newCamId);
+    if (isCameraActive) {
+      await stopCamera();
+      await startCamera(newCamId);
     }
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    
-    // Hardware accelerated BarcodeDetector when available
-    let barcodeDetector: any = null;
-    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-      try {
-        barcodeDetector = new (window as any).BarcodeDetector({
-          formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e'],
-        });
-      } catch {
-        barcodeDetector = null;
-      }
-    }
-
-    let isScanning = true;
-    let isProcessingFrame = false;
-
-    const scanFrame = async () => {
-      if (!isScanning) return;
-
-      const video = videoRef.current;
-      if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0 && !isProcessingFrame) {
-        isProcessingFrame = true;
-        try {
-          let detectedText: string | null = null;
-
-          // 1. Try hardware-accelerated BarcodeDetector first
-          if (barcodeDetector) {
-            try {
-              const barcodes = await barcodeDetector.detect(video);
-              if (barcodes && barcodes.length > 0 && barcodes[0]?.rawValue) {
-                detectedText = barcodes[0].rawValue;
-              }
-            } catch {
-              // Barcode detector error, fall back to jsQR
-            }
-          }
-
-          // 2. jsQR software fallback with scaled sampling for high performance
-          if (!detectedText && ctx) {
-            const scale = Math.min(1, 640 / Math.max(video.videoWidth, video.videoHeight));
-            const targetWidth = Math.max(240, Math.floor(video.videoWidth * scale));
-            const targetHeight = Math.max(240, Math.floor(video.videoHeight * scale));
-
-            if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-              canvas.width = targetWidth;
-              canvas.height = targetHeight;
-            }
-
-            ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
-            const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-            const code = jsQR(imageData.data, imageData.width, imageData.height, {
-              inversionAttempts: 'attemptBoth',
-            });
-
-            if (code && code.data) {
-              detectedText = code.data;
-            }
-          }
-
-          if (detectedText) {
-            const rawData = detectedText.trim();
-            const now = Date.now();
-            // Debounce matching same code within 3 seconds
-            if (rawData !== lastScanCodeRef.current || now - lastScanTimeRef.current > 3000) {
-              lastScanCodeRef.current = rawData;
-              lastScanTimeRef.current = now;
-              handleProcessScannedCode(rawData);
-            }
-          }
-        } catch (frameErr) {
-          // Ignore transient frame read errors
-        } finally {
-          isProcessingFrame = false;
-        }
-      }
-
-      animationFrameRef.current = requestAnimationFrame(scanFrame);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(scanFrame);
   };
 
   const handleProcessScannedCode = async (codeText: string) => {
@@ -522,6 +572,37 @@ export const AttendanceView: React.FC = () => {
     });
 
     if (matched) {
+      // Check if student has ALREADY checked in today
+      const alreadyChecked =
+        checkedInTodayMap[matched.id] ||
+        scanFeed.find(
+          (f) =>
+            f.studentId === matched.id ||
+            f.admissionNumber.toLowerCase().trim() === matched.admissionNumber.toLowerCase().trim()
+        );
+
+      if (alreadyChecked) {
+        const checkedTime =
+          alreadyChecked.timestamp || (alreadyChecked as any).time || 'Earlier today';
+        setLastScannedStudent(null);
+        setAlreadyCheckedInAlert({
+          student: matched,
+          time: checkedTime,
+          status: alreadyChecked.status || 'PRESENT',
+        });
+
+        // Subtle reminder beep (not an error, but alert)
+        playBeep(false);
+
+        // Kenyan English voice: "[student name] has already checked in."
+        speakGreeting(`${matched.fullName} has already checked in.`);
+
+        showToast(`${matched.fullName} has ALREADY checked in today (${checkedTime}).`, 'warning');
+        return;
+      }
+
+      // First-time check-in today:
+      setAlreadyCheckedInAlert(null);
       setLastScannedStudent(matched);
       setScanFlash(true);
       setTimeout(() => setScanFlash(false), 900);
@@ -533,9 +614,24 @@ export const AttendanceView: React.FC = () => {
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const isLate = now.getHours() > 8; // After 8:00 AM
 
+      // Speak Kenyan English Greeting: "Welcome to Gracia Learning Centre, [student name]!"
+      const schoolTitle = school?.name || 'Gracia Learning Centre';
+      speakGreeting(`Welcome to ${schoolTitle}, ${matched.fullName}.`);
+
+      // Update in-memory tracking map so subsequent scans immediately know
+      setCheckedInTodayMap((prev) => ({
+        ...prev,
+        [matched.id]: {
+          time: timeStr,
+          status: isLate ? 'LATE' : 'PRESENT',
+          studentName: matched.fullName,
+        },
+      }));
+
       setScanFeed((prev) => [
         {
           id: `scan-${Date.now()}`,
+          studentId: matched.id,
           studentName: matched.fullName,
           admissionNumber: matched.admissionNumber,
           classLevel: `${matched.currentClass} ${matched.stream}`,
@@ -545,7 +641,7 @@ export const AttendanceView: React.FC = () => {
         ...prev.slice(0, 24),
       ]);
 
-      showToast(`Verified & Logged Present: ${matched.fullName} (${matched.admissionNumber})`, 'success');
+      showToast(`Verified & Logged: ${matched.fullName} (${matched.admissionNumber})`, 'success');
 
       // Auto-sync into today's Firestore attendance record
       if (school?.id) {
@@ -575,7 +671,7 @@ export const AttendanceView: React.FC = () => {
               return {
                 ...e,
                 status: (isLate ? 'LATE' : 'PRESENT') as AttendanceRecord['entries'][0]['status'],
-                remarks: `Scanned at Gate Scanner (${timeStr})`,
+                remarks: `Scanned at Gate Terminal (${timeStr})`,
               };
             }
             return e;
@@ -585,7 +681,7 @@ export const AttendanceView: React.FC = () => {
             date: todayDateStr,
             classLevel: matched.currentClass,
             stream: matched.stream,
-            recordedBy: user?.fullName || 'Gate QR Terminal',
+            recordedBy: user?.fullName || 'Gate QR Scanner Terminal',
             entries: updatedEntries,
           });
         } catch (syncErr) {
@@ -593,11 +689,14 @@ export const AttendanceView: React.FC = () => {
         }
       }
     } else {
+      setLastScannedStudent(null);
+      setAlreadyCheckedInAlert(null);
       playBeep(false);
-      showToast(`Scanned Code '${cleanText.slice(0, 30)}' not matched to any active learner.`, 'warning');
+      showToast(`Scanned Code '${cleanText.slice(0, 30)}' not matched to any registered student.`, 'warning');
     }
   };
 
+  // USB Scanner Barcode Input Handler
   const handleUsbSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!usbInput.trim()) return;
@@ -605,66 +704,38 @@ export const AttendanceView: React.FC = () => {
     setUsbInput('');
   };
 
-  // Image / Photo QR Upload Scan
-  const handleImageFileScan = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Image / Photo QR Upload Scan with Html5Qrcode
+  const handleImageFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsProcessingFile(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = async () => {
-        let detected = false;
-        // 1. Try native BarcodeDetector if available
-        if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-          try {
-            const detector = new (window as any).BarcodeDetector({
-              formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'upc_a', 'upc_e'],
-            });
-            const barcodes = await detector.detect(img);
-            if (barcodes && barcodes.length > 0 && barcodes[0]?.rawValue) {
-              handleProcessScannedCode(barcodes[0].rawValue);
-              detected = true;
-            }
-          } catch {
-            // fall back to jsQR
-          }
-        }
+    try {
+      // Create temporary scanner instance for file decode
+      const tempScanner = new Html5Qrcode('gate-qr-reader-temp', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+        ],
+        verbose: false,
+      });
 
-        // 2. jsQR canvas fallback
-        if (!detected) {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height, {
-              inversionAttempts: 'attemptBoth',
-            });
-            if (code && code.data) {
-              handleProcessScannedCode(code.data);
-              detected = true;
-            }
-          }
-        }
-
-        if (!detected) {
-          playBeep(false);
-          showToast('No QR code detected in the selected image. Please ensure the QR code is clear and in focus.', 'warning');
-        }
-        setIsProcessingFile(false);
-      };
-      img.onerror = () => {
-        setIsProcessingFile(false);
-        showToast('Failed to parse the uploaded image.', 'error');
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+      const decodedText = await tempScanner.scanFile(file, true);
+      if (decodedText) {
+        handleProcessScannedCode(decodedText);
+      } else {
+        throw new Error('No QR code detected');
+      }
+    } catch (err: any) {
+      console.warn('File decode error:', err);
+      playBeep(false);
+      showToast('No QR code detected in the selected image. Ensure the QR code is clear, bright, and in focus.', 'warning');
+    } finally {
+      setIsProcessingFile(false);
+      e.target.value = '';
+    }
   };
 
   // Quick Simulated Test Scan
@@ -680,6 +751,24 @@ export const AttendanceView: React.FC = () => {
       classLevel: `${target.currentClass} ${target.stream}`,
     });
     handleProcessScannedCode(testPayload);
+  };
+
+  // Open On-Screen Badge Preview Modal
+  const handleOpenBadgePreview = async (st: Student) => {
+    setPreviewBadgeStudent(st);
+    try {
+      const url = await generateStudentQrCode({
+        type: 'STUDENT_ATTENDANCE',
+        schoolId: school?.id || '',
+        studentId: st.id,
+        admissionNumber: st.admissionNumber,
+        fullName: st.fullName,
+        classLevel: `${st.currentClass} ${st.stream}`,
+      });
+      setPreviewBadgeQrUrl(url);
+    } catch (e) {
+      console.error('Failed generating test QR badge:', e);
+    }
   };
 
   // Generate All QR Codes for Printing
@@ -715,6 +804,9 @@ export const AttendanceView: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
+      {/* Hidden temporary element for file decode */}
+      <div id="gate-qr-reader-temp" className="hidden" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
@@ -777,77 +869,69 @@ export const AttendanceView: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Scanner Viewport Card */}
           <div className="lg:col-span-2 bg-slate-900 text-white rounded-3xl p-6 shadow-md border border-slate-800 flex flex-col justify-between space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className={`w-3 h-3 rounded-full ${isCameraActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'}`} />
                 <span className="font-bold text-sm">Gate Attendance Scanner Station</span>
               </div>
+              
               <div className="flex items-center gap-2">
+                {/* Camera Selector dropdown if multiple webcams available */}
+                {availableCameras.length > 1 && (
+                  <select
+                    value={selectedCameraId}
+                    onChange={(e) => handleCameraChange(e.target.value)}
+                    className="px-2.5 py-1 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg text-xs"
+                  >
+                    {availableCameras.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label || `Camera ${c.id.slice(0, 5)}...`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setSoundEnabled(!soundEnabled)}
                   title={soundEnabled ? 'Mute Chime Sound' : 'Enable Chime Sound'}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
                 >
                   {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
                 </button>
                 <Badge variant="primary" size="sm">
-                  Optical QR & USB
+                  Optical QR & Barcode
                 </Badge>
               </div>
             </div>
 
-            {/* Video Viewport */}
-            <div className={`relative aspect-video w-full bg-black rounded-2xl overflow-hidden border ${scanFlash ? 'border-emerald-400 ring-4 ring-emerald-500/40' : 'border-slate-700'} flex items-center justify-center transition-all duration-200`}>
-              {/* Always keep video in DOM so ref is permanently available for stream attachment */}
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className={`w-full h-full object-cover ${isCameraActive ? 'block' : 'hidden'}`}
+            {/* Video Viewport / Html5Qrcode Element */}
+            <div className={`relative min-h-[300px] w-full bg-black rounded-2xl overflow-hidden border ${scanFlash ? 'border-emerald-400 ring-4 ring-emerald-500/40' : 'border-slate-700'} flex flex-col items-center justify-center transition-all duration-200`}>
+              
+              {/* Html5Qrcode Scanner Target Div */}
+              <div
+                id="gate-qr-reader"
+                className={`w-full h-full max-h-[460px] overflow-hidden ${isCameraActive ? 'block' : 'hidden'}`}
               />
 
-              {isCameraActive ? (
-                <>
-                  {/* Scanner Crosshair Reticle */}
-                  <div className="absolute inset-0 border-2 border-blue-500/30 flex items-center justify-center pointer-events-none">
-                    <div className={`w-52 h-52 border-2 rounded-2xl relative flex items-center justify-center transition-colors duration-200 ${scanFlash ? 'border-emerald-300 bg-emerald-500/20 shadow-[0_0_20px_#10b981]' : 'border-emerald-400 animate-pulse'}`}>
-                      <div className="w-full h-0.5 bg-emerald-400/90 absolute shadow-[0_0_10px_#34d399] animate-bounce" />
-                      <div className="absolute top-2 left-2 text-[9px] font-mono text-emerald-300 bg-slate-950/80 px-1.5 py-0.5 rounded">
-                        Aim at Student QR / Barcode
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Camera Toolbar Overlay */}
-                  <div className="absolute top-3 right-3 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={toggleCameraFacing}
-                      title="Flip Camera (Front/Back)"
-                      className="p-2 bg-slate-950/80 hover:bg-slate-900 text-white rounded-xl border border-slate-700 text-xs flex items-center gap-1.5 shadow-lg backdrop-blur-xs transition-all cursor-pointer"
-                    >
-                      <FlipHorizontal className="w-3.5 h-3.5 text-blue-400" />
-                      <span className="text-[11px] font-semibold">{cameraFacing === 'environment' ? 'Rear Cam' : 'Front Cam'}</span>
-                    </button>
-                  </div>
-                </>
-              ) : (
+              {!isCameraActive && (
                 <div className="text-center p-6 space-y-3">
                   <div className="w-14 h-14 bg-slate-800 text-slate-400 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
                     <Camera className="w-7 h-7" />
                   </div>
                   <div>
                     <h4 className="font-bold text-sm text-slate-200">Camera Scanner Ready</h4>
-                    <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
+                    <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
                       Click below to activate live webcam/phone camera, scan a badge image, or plug in a USB handheld barcode reader.
                     </p>
                   </div>
                   {cameraError && (
-                    <div className="text-xs text-amber-300 bg-amber-950/70 p-2.5 rounded-xl border border-amber-800/80 max-w-sm mx-auto text-left flex items-start gap-2">
+                    <div className="text-xs text-amber-300 bg-amber-950/70 p-3 rounded-xl border border-amber-800/80 max-w-md mx-auto text-left flex items-start gap-2.5">
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-                      <span>{cameraError}</span>
+                      <div className="space-y-1">
+                        <p className="font-semibold">{cameraError}</p>
+                        <p className="text-[11px] text-amber-400/80">Tip: You can also use the <strong>Upload QR Photo</strong> button or the <strong>Instant Test Badges</strong> below to test scanning immediately!</p>
+                      </div>
                     </div>
                   )}
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
@@ -855,7 +939,7 @@ export const AttendanceView: React.FC = () => {
                       variant="primary"
                       size="sm"
                       icon={<Camera className="w-4 h-4" />}
-                      onClick={() => startCamera(cameraFacing)}
+                      onClick={() => startCamera(selectedCameraId)}
                       className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
                     >
                       Start Camera Scanner
@@ -881,19 +965,39 @@ export const AttendanceView: React.FC = () => {
               )}
             </div>
 
-            {/* Quick Test Demo Simulator & Scanner Controls */}
+            {/* Scanner Controls & USB / Manual Entry Bar */}
             <div className="space-y-3 pt-2">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  {isCameraActive && (
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={stopCamera}
-                      className="text-xs font-bold"
+                  {isCameraActive ? (
+                    <>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={stopCamera}
+                        className="text-xs font-bold cursor-pointer"
+                      >
+                        Stop Camera
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={toggleCameraFacing}
+                        title="Flip Camera"
+                        className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
+                      >
+                        <FlipHorizontal className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="text-[11px] font-semibold">{cameraFacing === 'environment' ? 'Rear' : 'Front'}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startCamera(selectedCameraId)}
+                      className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl border border-emerald-600 flex items-center gap-1.5 cursor-pointer transition-all"
                     >
-                      Stop Camera
-                    </Button>
+                      <Camera className="w-3.5 h-3.5" />
+                      Start Camera
+                    </button>
                   )}
                   <button
                     type="button"
@@ -907,58 +1011,78 @@ export const AttendanceView: React.FC = () => {
                 </div>
 
                 <form onSubmit={handleUsbSubmit} className="flex-1 flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Scan badge with USB reader or type Admission No..."
-                    value={usbInput}
-                    onChange={(e) => setUsbInput(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
-                  />
-                  <Button variant="secondary" size="sm" type="submit">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="Scan with USB reader or type Admission No..."
+                      value={usbInput}
+                      onChange={(e) => setUsbInput(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
+                    />
+                    <Keyboard className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  </div>
+                  <Button variant="secondary" size="sm" type="submit" className="cursor-pointer">
                     Check In
                   </Button>
                 </form>
               </div>
 
-              {/* Instant Test Learner Verification Picker */}
-              <div className="p-2.5 bg-slate-800/60 rounded-xl border border-slate-700/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <span className="text-slate-400 flex items-center gap-1 font-semibold">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Quick Test QR Verification:
+              {/* Instant Test Learner Verification & Badge Generator */}
+              <div className="p-3 bg-slate-800/70 rounded-2xl border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <span className="text-slate-300 flex items-center gap-1.5 font-bold">
+                  <Sparkles className="w-4 h-4 text-amber-400" /> Quick Test QR Verification:
                 </span>
-                <div className="flex items-center gap-2 flex-1 max-w-sm">
+                
+                <div className="flex flex-wrap items-center gap-2 flex-1 justify-end">
                   <select
                     value={testStudentId}
                     onChange={(e) => setTestStudentId(e.target.value)}
-                    className="flex-1 px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200"
+                    className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-blue-500 max-w-[220px]"
                   >
-                    <option value="">-- Choose Learner to Test --</option>
+                    <option value="">-- Select Learner --</option>
                     {(allSchoolStudents.length > 0 ? allSchoolStudents : students).map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.fullName} ({s.admissionNumber}) - {s.currentClass}
+                        {s.fullName} ({s.admissionNumber})
                       </option>
                     ))}
                   </select>
+
                   <Button
                     variant="outline"
                     size="sm"
                     disabled={!testStudentId}
                     onClick={() => handleSimulateTestScan(testStudentId)}
-                    className="text-xs whitespace-nowrap bg-blue-900/40 hover:bg-blue-900/80 border-blue-700 text-blue-200"
+                    className="text-xs whitespace-nowrap bg-blue-900/50 hover:bg-blue-900/90 border-blue-700 text-blue-200 cursor-pointer"
                   >
                     Simulate Scan
                   </Button>
+
+                  {testStudentId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = (allSchoolStudents.length > 0 ? allSchoolStudents : students).find((s) => s.id === testStudentId);
+                        if (target) handleOpenBadgePreview(target);
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl font-semibold text-xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-blue-400" />
+                      Show QR on Screen
+                    </button>
+                  )}
                 </div>
               </div>
 
+              {/* Verified Student Banner */}
               {lastScannedStudent && (
-                <div className="bg-slate-800/90 p-3.5 rounded-2xl border border-emerald-500/60 flex items-center gap-3 animate-fadeIn shadow-lg">
+                <div className="bg-slate-800/95 p-3.5 rounded-2xl border-2 border-emerald-500/80 flex items-center gap-3.5 animate-fadeIn shadow-xl">
                   <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-sm shrink-0">
-                    <CheckCircle2 className="w-6 h-6" />
+                    <CheckCircle2 className="w-7 h-7" />
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                        Successfully Verified & Logged:
+                        Verified & Logged Present:
                       </span>
                       <span className="text-[10px] text-slate-400 font-mono">
                         {new Date().toLocaleTimeString()}
@@ -966,8 +1090,35 @@ export const AttendanceView: React.FC = () => {
                     </div>
                     <h4 className="font-bold text-sm text-white">{lastScannedStudent.fullName}</h4>
                     <p className="text-xs text-slate-300">
-                      {lastScannedStudent.admissionNumber} • {lastScannedStudent.currentClass}{' '}
-                      {lastScannedStudent.stream} Stream • Emergency: {lastScannedStudent.parentPhone || '+254 722 000 000'}
+                      Adm No: <strong className="text-amber-400 font-mono">{lastScannedStudent.admissionNumber}</strong> • {lastScannedStudent.currentClass}{' '}
+                      {lastScannedStudent.stream} Stream • Guardian: {lastScannedStudent.parentPhone || '+254 722 000 000'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Already Checked In Warning Banner */}
+              {alreadyCheckedInAlert && (
+                <div className="bg-amber-950/50 p-3.5 rounded-2xl border-2 border-amber-500/90 flex items-center gap-3.5 animate-fadeIn shadow-xl">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-sm shrink-0">
+                    <AlertCircle className="w-7 h-7" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
+                        Already Checked In Today:
+                      </span>
+                      <span className="text-[10px] text-amber-300/90 font-mono">
+                        Recorded at {alreadyCheckedInAlert.time}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-sm text-white">{alreadyCheckedInAlert.student.fullName}</h4>
+                    <p className="text-xs text-amber-200/90">
+                      Adm No: <strong className="text-white font-mono">{alreadyCheckedInAlert.student.admissionNumber}</strong> • {alreadyCheckedInAlert.student.currentClass}{' '}
+                      {alreadyCheckedInAlert.student.stream} Stream • Status: <span className="text-emerald-400 font-bold">{alreadyCheckedInAlert.status}</span>
+                    </p>
+                    <p className="text-[11px] text-amber-300 mt-0.5 font-medium">
+                      ⚠️ Student is already checked in for today. No duplicate scan recorded.
                     </p>
                   </div>
                 </div>
@@ -988,11 +1139,11 @@ export const AttendanceView: React.FC = () => {
                 </Badge>
               </div>
 
-              <div className="mt-4 max-h-96 overflow-y-auto space-y-2 pr-1">
+              <div className="mt-4 max-h-[380px] overflow-y-auto space-y-2 pr-1">
                 {scanFeed.length === 0 ? (
                   <div className="text-center py-12 text-slate-400 text-xs space-y-1">
                     <Scan className="w-8 h-8 mx-auto text-slate-300" />
-                    <p>No learners scanned yet today.</p>
+                    <p className="font-semibold text-slate-600">No learners scanned yet today.</p>
                     <p className="text-[10px]">Scanned student badges will appear here in real-time.</p>
                   </div>
                 ) : (
@@ -1020,7 +1171,7 @@ export const AttendanceView: React.FC = () => {
 
             <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-400 text-center flex items-center justify-center gap-1">
               <Sparkles className="w-3 h-3 text-emerald-500" />
-              <span>Universal jsQR Optical Decoder & Firestore Gate Sync Active</span>
+              <span>Html5Qrcode Optical Scanner & Firestore Gate Sync Active</span>
             </div>
           </div>
         </div>
@@ -1067,7 +1218,12 @@ export const AttendanceView: React.FC = () => {
                 variant="primary"
                 size="sm"
                 icon={<Printer className="w-3.5 h-3.5" />}
-                onClick={() => window.print()}
+                onClick={() =>
+                  printerService.printTargetElement(
+                    'printable-class-qr-cards',
+                    `Student_ID_Cards_${selectedClass}_${selectedStream}`
+                  )
+                }
               >
                 Print ID Cards
               </Button>
@@ -1075,7 +1231,10 @@ export const AttendanceView: React.FC = () => {
           </div>
 
           {/* Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 print:grid-cols-3">
+          <div
+            id="printable-class-qr-cards"
+            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 print:grid-cols-3"
+          >
             {students.map((st) => {
               const qrSrc = qrCodeUrls[st.id];
 
@@ -1114,6 +1273,23 @@ export const AttendanceView: React.FC = () => {
                       <span className="text-[10px]">Click Generate</span>
                     </div>
                   )}
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenBadgePreview(st)}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      View Badge
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSimulateTestScan(st.id)}
+                      className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      Test Scan
+                    </button>
+                  </div>
 
                   <div className="text-[9px] text-slate-400 font-mono">
                     Valid: Academic Year {school?.academicYear || '2026'}
@@ -1183,14 +1359,14 @@ export const AttendanceView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAllStatus('PRESENT')}
-                className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold border border-emerald-200 transition-colors"
+                className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold border border-emerald-200 transition-colors cursor-pointer"
               >
                 Mark All Present
               </button>
               <button
                 type="button"
                 onClick={() => setAllStatus('ABSENT')}
-                className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold border border-rose-200 transition-colors"
+                className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold border border-rose-200 transition-colors cursor-pointer"
               >
                 Mark All Absent
               </button>
@@ -1200,6 +1376,7 @@ export const AttendanceView: React.FC = () => {
                 icon={<Save className="w-4 h-4" />}
                 onClick={handleSaveAttendance}
                 loading={saving}
+                className="cursor-pointer"
               >
                 Save Attendance Register
               </Button>
@@ -1374,7 +1551,79 @@ export const AttendanceView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* On-Screen Student QR ID Card Preview Modal */}
+      {previewBadgeStudent && (
+        <Modal
+          isOpen={!!previewBadgeStudent}
+          onClose={() => setPreviewBadgeStudent(null)}
+          title="Student QR ID Badge Preview"
+          size="md"
+        >
+          <div className="space-y-5 p-2 text-center">
+            <div className="bg-gradient-to-br from-blue-950 to-blue-900 text-white p-6 rounded-3xl border-2 border-blue-400/40 shadow-xl space-y-4 max-w-sm mx-auto">
+              <div className="text-[11px] font-black text-amber-400 uppercase tracking-wider">
+                {school?.name || 'Gracia Learning Centre'}
+              </div>
+
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-14 h-14 rounded-full bg-blue-800 text-white border-2 border-blue-400 flex items-center justify-center font-bold text-lg">
+                  {previewBadgeStudent.fullName
+                    .split(' ')
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join('')}
+                </div>
+                <div className="text-left">
+                  <h3 className="font-bold text-base text-white">{previewBadgeStudent.fullName}</h3>
+                  <p className="text-xs font-mono text-amber-400 font-bold">{previewBadgeStudent.admissionNumber}</p>
+                  <p className="text-[11px] text-blue-200">
+                    {previewBadgeStudent.currentClass} • {previewBadgeStudent.stream} Stream
+                  </p>
+                </div>
+              </div>
+
+              {previewBadgeQrUrl && (
+                <div className="p-3 bg-white rounded-2xl shadow-inner max-w-[200px] mx-auto border-2 border-slate-900">
+                  <img src={previewBadgeQrUrl} alt="QR Code" className="w-full h-full object-contain" />
+                </div>
+              )}
+
+              <div className="text-[10px] text-blue-300 font-mono">
+                Scan with Gate Terminal Camera or Phone Camera
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Sparkles className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  if (previewBadgeStudent) {
+                    handleSimulateTestScan(previewBadgeStudent.id);
+                    setPreviewBadgeStudent(null);
+                  }
+                }}
+              >
+                Scan This Badge Now
+              </Button>
+              {previewBadgeQrUrl && (
+                <a
+                  href={previewBadgeQrUrl}
+                  download={`QR-${previewBadgeStudent.admissionNumber.replace(/\//g, '-')}.png`}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-600" />
+                  Download Image
+                </a>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
+
 export default AttendanceView;

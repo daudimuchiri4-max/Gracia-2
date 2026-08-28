@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { feeService, DEFAULT_CBC_FEE_STRUCTURES } from '../../services/feeAndPaymentService';
 import { studentService } from '../../services/studentService';
 import { darajaService, DarajaTransaction } from '../../services/darajaService';
+import { printerService } from '../../services/printerService';
 import { FeeStructure, Invoice, Payment, Student, GradeLevel } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -1638,11 +1639,19 @@ export const FeesView: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-3 pt-2 no-print">
               <Button variant="outline" onClick={() => setIsPrintStructureModalOpen(false)}>
                 Close
               </Button>
-              <Button variant="primary" icon={<Printer className="w-4 h-4" />} onClick={() => window.print()}>
+              <Button
+                variant="primary"
+                icon={<Printer className="w-4 h-4" />}
+                onClick={() => {
+                  if (selectedStructureForPrint) {
+                    printerService.printFeeStructure(selectedStructureForPrint, school);
+                  }
+                }}
+              >
                 Print Official Fee Schedule
               </Button>
             </div>
