@@ -36,9 +36,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       <div id="printable-receipt" className="p-6 bg-white border border-slate-200 rounded-xl space-y-6 text-slate-800">
         {/* School Header */}
         <div className="text-center border-b border-slate-200 pb-4">
-          <div className="inline-flex p-2 rounded-xl bg-blue-900 text-white mb-2">
-            <SchoolIcon className="w-6 h-6" />
-          </div>
+          {school?.logoUrl ? (
+            <div className="flex justify-center mb-2.5">
+              <img
+                src={school.logoUrl}
+                alt={school?.name || 'School Logo'}
+                className="w-16 h-16 object-contain rounded-xl border border-slate-200 p-1 bg-white shadow-xs"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          ) : (
+            <div className="inline-flex p-2.5 rounded-xl bg-blue-900 text-white mb-2 shadow-xs">
+              <SchoolIcon className="w-6 h-6" />
+            </div>
+          )}
           <h2 className="text-xl font-bold text-slate-900 uppercase tracking-wide">
             {school?.name || 'Gracia Learning Centre'}
           </h2>

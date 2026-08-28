@@ -38,7 +38,7 @@ export const DEFAULT_SCHOOL: School = {
   levels: DEFAULT_LEVELS,
   primaryColor: '#1e3a8a', // Deep royal navy
   accentColor: '#059669', // Emerald green
-  logoUrl: '',
+  logoUrl: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=200&q=80',
   termDates: {
     term1Start: '2026-01-05',
     term1End: '2026-04-03',
