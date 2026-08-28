@@ -107,6 +107,35 @@ export const AttendanceView: React.FC = () => {
   const lastScanCodeRef = useRef<string>('');
   const lastScanTimeRef = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Pre-initialize and cache SpeechSynthesis voices
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+  }, []);
+
+  const getAudioContext = (): AudioContext | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      if (!audioCtxRef.current) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          audioCtxRef.current = new AudioCtx();
+        }
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().catch(() => {});
+      }
+      return audioCtxRef.current;
+    } catch {
+      return null;
+    }
+  };
 
   // Student QR Badges State
   const [qrCodeUrls, setQrCodeUrls] = useState<Record<string, string>>({});
@@ -316,56 +345,56 @@ export const AttendanceView: React.FC = () => {
     }
   };
 
-  // Audio Beep Chime
+  // Instant Zero-Latency Audio Beep Chime
   const playBeep = (success: boolean) => {
     if (!soundEnabled) return;
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) return;
-      const audioCtx = new AudioCtx();
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
+      const audioCtx = getAudioContext();
+      if (!audioCtx) return;
+
+      const now = audioCtx.currentTime;
 
       if (success) {
-        // Dual-tone harmonic chime (E5 -> A5)
-        const osc1 = audioCtx.createOscillator();
-        const osc2 = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(659.25, audioCtx.currentTime); // E5
-        osc1.frequency.setValueAtTime(880.0, audioCtx.currentTime + 0.08); // A5
-
-        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
-
-        osc1.connect(gain);
-        gain.connect(audioCtx.destination);
-
-        osc1.start();
-        osc1.stop(audioCtx.currentTime + 0.25);
-      } else {
-        // Soft low rejection buzz
+        // Bright, crisp positive dual-tone chime (E5 659Hz -> A5 880Hz)
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(220, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(659.25, now);
+        osc.frequency.setValueAtTime(880.0, now + 0.07);
+
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
 
         osc.connect(gain);
         gain.connect(audioCtx.destination);
 
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.2);
+        osc.start(now);
+        osc.stop(now + 0.22);
+      } else {
+        // Crisp gentle rejection buzz (220Hz)
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(261.63, now); // C4
+        osc.frequency.setValueAtTime(220.0, now + 0.08); // A3
+
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.2);
       }
     } catch {
       // Audio optional
     }
   };
 
-  // Kenyan English Spoken Greeting / Audio Announcement
+  // Clear Standard English Spoken Announcement
   const speakGreeting = (text: string) => {
     if (!soundEnabled) return;
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
@@ -375,21 +404,23 @@ export const AttendanceView: React.FC = () => {
       const utterance = new SpeechSynthesisUtterance(text);
 
       const voices = window.speechSynthesis.getVoices();
-      // Look for Kenya English (en-KE), Commonwealth / African English accents, then fallback
-      const kenyaVoice =
-        voices.find((v) => v.lang === 'en-KE' || v.lang.toLowerCase().includes('ke')) ||
-        voices.find((v) => v.lang === 'en-GB' || v.lang === 'en-ZA' || v.lang === 'en-NG' || v.lang.startsWith('en')) ||
+      // Select crisp, natural standard English voice (US / GB / AU / CA or default clear English)
+      const englishVoice =
+        voices.find((v) => v.lang === 'en-US' && !v.name.includes('Bad') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Zira') || v.name.includes('David') || v.name.includes('Jenny') || v.name.includes('Guy'))) ||
+        voices.find((v) => v.lang === 'en-US') ||
+        voices.find((v) => v.lang === 'en-GB' || v.lang === 'en-AU' || v.lang === 'en-CA') ||
+        voices.find((v) => v.lang.startsWith('en')) ||
         voices[0];
 
-      if (kenyaVoice) {
-        utterance.voice = kenyaVoice;
-        utterance.lang = kenyaVoice.lang || 'en-KE';
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+        utterance.lang = englishVoice.lang || 'en-US';
       } else {
-        utterance.lang = 'en-KE';
+        utterance.lang = 'en-US';
       }
 
-      utterance.rate = 0.95; // Warm, natural school pace
-      utterance.pitch = 1.05; // Friendly and upbeat
+      utterance.rate = 1.02; // Natural, clear, responsive pace
+      utterance.pitch = 1.0;  // Balanced natural pitch
       utterance.volume = 1.0;
 
       window.speechSynthesis.speak(utterance);
@@ -398,16 +429,21 @@ export const AttendanceView: React.FC = () => {
     }
   };
 
-  // Start Camera Scanner using Html5Qrcode engine
-  const startCamera = async (targetCameraId?: string) => {
+  // Start Camera Scanner using Html5Qrcode engine with multi-mode fallback
+  const startCamera = async (targetCameraId?: string, overrideFacing?: 'environment' | 'user') => {
     setCameraError(null);
     await stopCamera();
+
+    const facingToUse = overrideFacing || cameraFacing;
 
     try {
       const readerElem = document.getElementById('gate-qr-reader');
       if (!readerElem) {
         throw new Error('Scanner container element not found');
       }
+
+      // Clear any prior canvas/video remnants
+      readerElem.innerHTML = '';
 
       const html5QrCode = new Html5Qrcode('gate-qr-reader', {
         formatsToSupport: [
@@ -423,51 +459,66 @@ export const AttendanceView: React.FC = () => {
       html5QrCodeRef.current = html5QrCode;
 
       const config = {
-        fps: 15,
-        qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
-          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const qrboxSize = Math.floor(minEdge * 0.75);
-          return {
-            width: Math.max(200, Math.min(320, qrboxSize)),
-            height: Math.max(200, Math.min(320, qrboxSize)),
-          };
-        },
-        aspectRatio: 1.333334,
+        fps: 12,
+        qrbox: { width: 250, height: 250 },
       };
 
-      const cameraSelection = targetCameraId || selectedCameraId || { facingMode: cameraFacing };
-
-      await html5QrCode.start(
-        cameraSelection,
-        config,
-        (decodedText: string) => {
-          const rawData = decodedText.trim();
-          const now = Date.now();
-          // Debounce same code within 3 seconds
-          if (rawData !== lastScanCodeRef.current || now - lastScanTimeRef.current > 3000) {
-            lastScanCodeRef.current = rawData;
-            lastScanTimeRef.current = now;
-            handleProcessScannedCode(rawData);
-          }
-        },
-        (errorMessage: string) => {
-          // Standard scanning frame noise, ignore
+      const handleScanSuccess = (decodedText: string) => {
+        const rawData = decodedText.trim();
+        const now = Date.now();
+        // Debounce same code within 3 seconds
+        if (rawData !== lastScanCodeRef.current || now - lastScanTimeRef.current > 3000) {
+          lastScanCodeRef.current = rawData;
+          lastScanTimeRef.current = now;
+          handleProcessScannedCode(rawData);
         }
-      );
+      };
+
+      const handleScanError = () => {
+        // Continuous frame analysis noise, silently ignore
+      };
+
+      // Determine camera constraints
+      let cameraConfig: any = targetCameraId ? targetCameraId : { facingMode: facingToUse };
+
+      try {
+        await html5QrCode.start(cameraConfig, config, handleScanSuccess, handleScanError);
+      } catch (firstErr) {
+        console.warn('Initial camera selection failed, trying direct facingMode fallback...', firstErr);
+        // Fallback: Try general facingMode constraint or default environment
+        cameraConfig = { facingMode: 'environment' };
+        try {
+          await html5QrCode.start(cameraConfig, config, handleScanSuccess, handleScanError);
+        } catch (secondErr) {
+          console.warn('Environment facingMode failed, trying any video stream...', secondErr);
+          // Ultimate fallback: Try user front camera or default
+          cameraConfig = { facingMode: 'user' };
+          await html5QrCode.start(cameraConfig, config, handleScanSuccess, handleScanError);
+        }
+      }
 
       setIsCameraActive(true);
+
+      // Refresh camera devices list now that permission is granted
+      Html5Qrcode.getCameras()
+        .then((cameras) => {
+          if (cameras && cameras.length > 0) {
+            setAvailableCameras(cameras);
+          }
+        })
+        .catch(() => {});
     } catch (err: any) {
       console.error('Camera startup error:', err);
       setIsCameraActive(false);
 
       if (err?.name === 'NotAllowedError' || err?.message?.includes('Permission denied')) {
-        setCameraError('Camera permission was denied. Please allow camera access in your browser address bar.');
+        setCameraError('Camera permission was denied. Please allow camera access in your browser site settings or address bar.');
       } else if (err?.name === 'NotFoundError' || err?.message?.includes('No camera')) {
-        setCameraError('No webcam or camera device detected. You can upload a QR badge image or type the admission number below.');
+        setCameraError('No camera device detected. You can upload a QR badge photo or use manual admission entry below.');
       } else if (err?.name === 'NotReadableError') {
-        setCameraError('Camera device is busy in another app or tab.');
+        setCameraError('Camera is busy in another app or tab. Please close other camera apps and retry.');
       } else {
-        setCameraError(err?.message || 'Unable to start camera scanner. Try uploading a photo of the QR code or select a student below.');
+        setCameraError(err?.message || 'Unable to open camera. Try uploading a QR image or select a learner from the test list below.');
       }
     }
   };
@@ -484,6 +535,10 @@ export const AttendanceView: React.FC = () => {
       }
       html5QrCodeRef.current = null;
     }
+    const readerElem = document.getElementById('gate-qr-reader');
+    if (readerElem) {
+      readerElem.innerHTML = '';
+    }
     setIsCameraActive(false);
   };
 
@@ -492,7 +547,7 @@ export const AttendanceView: React.FC = () => {
     setCameraFacing(nextFacing);
     if (isCameraActive) {
       await stopCamera();
-      await startCamera(undefined);
+      await startCamera(undefined, nextFacing);
     }
   };
 
@@ -591,11 +646,11 @@ export const AttendanceView: React.FC = () => {
           status: alreadyChecked.status || 'PRESENT',
         });
 
-        // Subtle reminder beep (not an error, but alert)
+        // Warning tone for duplicate
         playBeep(false);
 
-        // Kenyan English voice: "[student name] has already checked in."
-        speakGreeting(`${matched.fullName} has already checked in.`);
+        // Standard English voice: "[student name] is already checked in."
+        speakGreeting(`${matched.fullName} is already checked in.`);
 
         showToast(`${matched.fullName} has ALREADY checked in today (${checkedTime}).`, 'warning');
         return;
@@ -607,16 +662,15 @@ export const AttendanceView: React.FC = () => {
       setScanFlash(true);
       setTimeout(() => setScanFlash(false), 900);
 
-      // Play success chime
+      // Play success chime immediately (zero latency)
       playBeep(true);
 
       const now = new Date();
       const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const isLate = now.getHours() > 8; // After 8:00 AM
 
-      // Speak Kenyan English Greeting: "Welcome to Gracia Learning Centre, [student name]!"
-      const schoolTitle = school?.name || 'Gracia Learning Centre';
-      speakGreeting(`Welcome to ${schoolTitle}, ${matched.fullName}.`);
+      // Speak Clear Standard English Greeting: "Welcome, [student name]!"
+      speakGreeting(`Welcome, ${matched.fullName}.`);
 
       // Update in-memory tracking map so subsequent scans immediately know
       setCheckedInTodayMap((prev) => ({
@@ -692,6 +746,7 @@ export const AttendanceView: React.FC = () => {
       setLastScannedStudent(null);
       setAlreadyCheckedInAlert(null);
       playBeep(false);
+      speakGreeting('Learner not recognized.');
       showToast(`Scanned Code '${cleanText.slice(0, 30)}' not matched to any registered student.`, 'warning');
     }
   };
@@ -906,16 +961,51 @@ export const AttendanceView: React.FC = () => {
             </div>
 
             {/* Video Viewport / Html5Qrcode Element */}
-            <div className={`relative min-h-[300px] w-full bg-black rounded-2xl overflow-hidden border ${scanFlash ? 'border-emerald-400 ring-4 ring-emerald-500/40' : 'border-slate-700'} flex flex-col items-center justify-center transition-all duration-200`}>
+            <div className={`relative min-h-[340px] w-full bg-slate-950 rounded-2xl overflow-hidden border ${scanFlash ? 'border-emerald-400 ring-4 ring-emerald-500/40' : 'border-slate-800'} flex flex-col items-center justify-center transition-all duration-200`}>
               
-              {/* Html5Qrcode Scanner Target Div */}
+              {/* CSS Rules to ensure Html5Qrcode video feeds render full-width on mobile and desktop without black letterboxing */}
+              <style>{`
+                #gate-qr-reader {
+                  border: none !important;
+                  width: 100% !important;
+                  max-width: 100% !important;
+                }
+                #gate-qr-reader video {
+                  width: 100% !important;
+                  height: auto !important;
+                  min-height: 280px !important;
+                  max-height: 420px !important;
+                  object-fit: cover !important;
+                  border-radius: 12px !important;
+                }
+                #gate-qr-reader canvas {
+                  display: none !important;
+                }
+                #gate-qr-reader__scan_region {
+                  display: flex !important;
+                  justify-content: center !important;
+                  align-items: center !important;
+                  min-height: 260px !important;
+                }
+                #gate-qr-reader__scan_region img {
+                  display: none !important;
+                }
+                #gate-qr-reader__dashboard {
+                  display: none !important;
+                }
+                #gate-qr-reader__header_message {
+                  display: none !important;
+                }
+              `}</style>
+
+              {/* Html5Qrcode Scanner Target Div - Always rendered with dimensions */}
               <div
                 id="gate-qr-reader"
-                className={`w-full h-full max-h-[460px] overflow-hidden ${isCameraActive ? 'block' : 'hidden'}`}
+                className="w-full min-h-[280px] flex items-center justify-center"
               />
 
               {!isCameraActive && (
-                <div className="text-center p-6 space-y-3">
+                <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center text-center p-6 space-y-3 z-10">
                   <div className="w-14 h-14 bg-slate-800 text-slate-400 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
                     <Camera className="w-7 h-7" />
                   </div>
@@ -939,7 +1029,7 @@ export const AttendanceView: React.FC = () => {
                       variant="primary"
                       size="sm"
                       icon={<Camera className="w-4 h-4" />}
-                      onClick={() => startCamera(selectedCameraId)}
+                      onClick={() => startCamera()}
                       className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
                     >
                       Start Camera Scanner
@@ -992,7 +1082,7 @@ export const AttendanceView: React.FC = () => {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => startCamera(selectedCameraId)}
+                      onClick={() => startCamera()}
                       className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl border border-emerald-600 flex items-center gap-1.5 cursor-pointer transition-all"
                     >
                       <Camera className="w-3.5 h-3.5" />

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { operationsService } from '../../services/operationsService';
-import { feeService, DEFAULT_CBC_FEE_STRUCTURES } from '../../services/feeAndPaymentService';
+import { DEFAULT_CBC_FEE_STRUCTURES } from '../../services/feeAndPaymentService';
 import { DEFAULT_WEBSITE_CONTENT, DEFAULT_SCHOOL_ID } from '../../services/schoolService';
 import { WebsiteContent, GradeLevel, UserRole, HeroSlide, TypographyStyle, FeeStructure } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -49,7 +49,13 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
   const { school, user } = useAuth();
   const { showToast } = useToast();
   const [content, setContent] = useState<WebsiteContent>(DEFAULT_WEBSITE_CONTENT);
-  const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
+  const [feeStructures, setFeeStructures] = useState<FeeStructure[]>(() =>
+    DEFAULT_CBC_FEE_STRUCTURES.map((f) => ({
+      ...f,
+      schoolId: 'glc-main',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }))
+  );
   const [selectedFeeCategory, setSelectedFeeCategory] = useState<FeeTierCategory>('LOWER_PRIMARY');
   const [isFeePrintModalOpen, setIsFeePrintModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -78,7 +84,6 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
 
   useEffect(() => {
     loadContent();
-    loadFees();
 
     // Listen to live CMS updates from CMS editor or other windows
     const handleCmsUpdate = (e: Event) => {
@@ -134,26 +139,6 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
       }
     } catch (e) {
       console.error('Error loading website content:', e);
-    }
-  };
-
-  const loadFees = async () => {
-    try {
-      const sid = school?.id || DEFAULT_SCHOOL_ID;
-      const fsList = await feeService.getFeeStructures(sid);
-      if (fsList && fsList.length > 0) {
-        setFeeStructures(fsList);
-      } else {
-        setFeeStructures(
-          DEFAULT_CBC_FEE_STRUCTURES.map((f) => ({
-            ...f,
-            schoolId: sid,
-            createdAt: new Date().toISOString(),
-          }))
-        );
-      }
-    } catch (e) {
-      console.error('Error loading fees for website:', e);
     }
   };
 
@@ -393,9 +378,15 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
             <a href="#facilities" className="hover:text-blue-900 transition-colors">
               Facilities
             </a>
-            <a href="#fees" className="text-blue-900 flex items-center gap-1 hover:underline">
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="text-blue-900 flex items-center gap-1 hover:underline cursor-pointer"
+            >
               <DollarSign className="w-3.5 h-3.5" /> Fee Structure
-            </a>
+            </button>
             <a href="#faqs" className="hover:text-blue-900 transition-colors">
               FAQs
             </a>
@@ -544,12 +535,15 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
               >
                 {currentSlide?.buttonText || 'Enroll Your Child (2026 Intake)'}
               </Button>
-              <a
-                href="#fees"
+              <button
+                type="button"
+                onClick={() => {
+                  document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' });
+                }}
                 className="px-5 py-3 rounded-xl bg-slate-900/60 hover:bg-slate-900/85 text-white font-bold text-sm border border-white/30 transition-colors inline-flex items-center gap-2 backdrop-blur-xs shadow-xl cursor-pointer"
               >
                 <DollarSign className="w-4 h-4 text-amber-400" /> View 2026 Fee Structure
-              </a>
+              </button>
               <button
                 type="button"
                 onClick={() => {
