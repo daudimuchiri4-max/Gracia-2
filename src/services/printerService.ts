@@ -646,11 +646,15 @@ class PrinterService {
     const widthCss = is58 ? '58mm' : '80mm';
     const bodyWidth = is58 ? '48mm' : '72mm';
 
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const baseTag = origin ? `<base href="${origin}/">` : '';
+
     return `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
+        ${baseTag}
         <title>Receipt ${data.receiptNumber}</title>
         <style>
           @page {
@@ -746,11 +750,15 @@ class PrinterService {
    * HTML Template: Official A4 Fee Receipt
    */
   private generateA4FeeReceiptHtml(payment: Payment, school: School | null): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const baseTag = origin ? `<base href="${origin}/">` : '';
+
     return `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
+        ${baseTag}
         <title>Official Receipt - ${payment.receiptNumber}</title>
         <style>
           @page { size: A4 portrait; margin: 15mm; }
@@ -1223,16 +1231,49 @@ class PrinterService {
     doc.write(htmlContent);
     doc.close();
 
-    iframe.contentWindow?.focus();
-    setTimeout(() => {
+    const triggerPrint = () => {
       try {
+        iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch (e) {
         console.warn('Iframe print failed, falling back:', e);
       } finally {
-        setTimeout(() => iframe.remove(), 2000);
+        setTimeout(() => iframe.remove(), 2500);
       }
-    }, 350);
+    };
+
+    // Wait for images (like the school logo/crest) to finish loading before triggering print
+    const images = Array.from(doc.images);
+    if (images.length === 0) {
+      setTimeout(triggerPrint, 250);
+    } else {
+      let loaded = 0;
+      let triggered = false;
+      const onImgDone = () => {
+        loaded++;
+        if (loaded >= images.length && !triggered) {
+          triggered = true;
+          setTimeout(triggerPrint, 100);
+        }
+      };
+
+      images.forEach((img) => {
+        if (img.complete) {
+          onImgDone();
+        } else {
+          img.onload = onImgDone;
+          img.onerror = onImgDone;
+        }
+      });
+
+      // Safety timeout in case an image takes too long
+      setTimeout(() => {
+        if (!triggered) {
+          triggered = true;
+          triggerPrint();
+        }
+      }, 1000);
+    }
   }
 }
 

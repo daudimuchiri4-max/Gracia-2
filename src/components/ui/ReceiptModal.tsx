@@ -38,10 +38,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         <div className="text-center border-b border-slate-200 pb-4">
           <div className="flex justify-center mb-3">
             <img
-              src={school?.logoUrl || '/gracia_logo.svg'}
+              src={(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}
               alt={school?.name || 'Gracia Learning Centre'}
-              className="w-20 h-20 object-contain drop-shadow-xs"
+              className="w-24 h-24 object-contain drop-shadow-sm"
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.src = '/gracia_logo.svg';
+              }}
             />
           </div>
           <h2 className="text-xl font-black text-slate-900 uppercase tracking-wide">
