@@ -490,7 +490,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
           {/* Sidebar Footer */}
           <div className="p-4 border-t border-slate-100 text-center text-[10px] text-slate-400 font-medium">
-            Kenyan CBC Framework • v1.0
+            Kenyan CBC Framework • Copyright Davetch Solutions
           </div>
         </aside>
 

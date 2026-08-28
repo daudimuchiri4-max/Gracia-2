@@ -485,6 +485,14 @@ class PrinterService {
   }
 
   /**
+   * Print Complete Multi-Grade Master Fee Schedule (Playgroup to Grade 9)
+   */
+  public printMasterFeeSchedule(structures: FeeStructure[], school: School | null, academicYear: string = '2026'): void {
+    const html = this.generateMasterFeeScheduleHtml(structures, school, academicYear);
+    this.printA4Document(html, `Official_Fee_Schedule_${academicYear}_All_Grades`);
+  }
+
+  /**
    * Universal Helper: Print any target DOM element in a clean, isolated frame
    */
   public printTargetElement(elementId: string, documentTitle: string = 'Document'): void {
@@ -1190,6 +1198,158 @@ class PrinterService {
           <div>
             <div style="font-size: 11px; color: #475569;">Issued by: <strong>Bursar / Accounts Office</strong></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 3px;">Payment slips & M-Pesa codes must be submitted to the accounts office for official receipting.</div>
+          </div>
+          <div class="stamp-box">
+            Official School Stamp & Seal
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * HTML Template: Master Institutional Fee Schedule (All Grades)
+   */
+  private generateMasterFeeScheduleHtml(structures: FeeStructure[], school: School | null, academicYear: string): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const baseTag = origin ? `<base href="${origin}/">` : '';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        ${baseTag}
+        <title>Official Fee Schedule - Academic Year ${academicYear}</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a; background: #fff; line-height: 1.4; font-size: 11.5px; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+          .school-title { font-size: 20px; font-weight: 900; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px; }
+          .school-sub { font-size: 10.5px; color: #475569; margin-top: 2px; }
+          .badge { display: inline-block; background: #0f172a; color: #fff; padding: 4px 10px; font-size: 11px; font-weight: bold; border-radius: 4px; text-transform: uppercase; }
+          
+          .lead-notice { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; font-size: 11px; color: #334155; }
+          
+          table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }
+          th { background: #0f172a; color: #fff; text-align: left; padding: 7px 9px; font-weight: 700; }
+          td { border: 1px solid #e2e8f0; padding: 7px 9px; }
+          tr:nth-child(even) { background: #f8fafc; }
+          
+          .category-header { background: #e2e8f0; font-weight: 800; color: #1e293b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+          
+          .ancillary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+          .ancillary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; }
+          .ancillary-title { font-size: 11px; font-weight: bold; color: #0f172a; margin-bottom: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px; }
+          
+          .payment-channels { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; }
+          .channel-title { font-size: 11px; font-weight: bold; color: #0f172a; margin-bottom: 6px; }
+          .channels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+          .channel-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 10px; }
+          .channel-name { font-size: 10px; font-weight: 800; color: #065f46; text-transform: uppercase; margin-bottom: 2px; }
+          
+          .footer-box { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #cbd5e1; padding-top: 10px; margin-top: 10px; }
+          .stamp-box { border: 2px dashed #94a3b8; width: 130px; height: 55px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; color: #94a3b8; font-weight: bold; text-align: center; text-transform: uppercase; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <img src="${(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}" alt="School Crest" style="width: 55px; height: 55px; object-fit: contain; padding: 2px;" />
+            <div>
+              <div class="school-title">${school?.name || 'Gracia Learning Centre'}</div>
+              <div class="school-sub" style="font-weight: bold; color: #ea580c;">${school?.motto || '— I can! I will! —'}</div>
+              <div class="school-sub">${school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'}</div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div class="badge">ACADEMIC YEAR ${academicYear}</div>
+            <div style="font-size: 10px; color: #64748b; margin-top: 3px;">Full Official CBC Fee Structure</div>
+          </div>
+        </div>
+
+        <div class="lead-notice">
+          <strong>Official Kenyan Competency-Based Curriculum (CBC) Fee Schedule:</strong> All figures below represent exact termly fees covering full tuition, continuous assessment portfolios, nutritious midday meals, coding lab, and co-curricular programs.
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 18%;">Class Level</th>
+              <th style="width: 14%;">Curriculum Tier</th>
+              <th style="width: 48%;">Itemized Term Inclusions</th>
+              <th style="width: 20%; text-align: right;">Term Fee (${school?.currencySymbol || 'KSh'})</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${structures
+              .map(
+                (fs) => `
+              <tr>
+                <td style="font-weight: 800; color: #0f172a;">${fs.classLevel}</td>
+                <td style="color: #475569; font-size: 10.5px;">
+                  ${['Playgroup', 'PP1', 'PP2'].includes(fs.classLevel)
+                    ? 'Early Years (EYE)'
+                    : ['Grade 1', 'Grade 2', 'Grade 3'].includes(fs.classLevel)
+                    ? 'Lower Primary'
+                    : ['Grade 4', 'Grade 5', 'Grade 6'].includes(fs.classLevel)
+                    ? 'Upper Primary (KPSEA)'
+                    : 'Junior School (KJSEA)'}
+                </td>
+                <td style="font-size: 10.5px; color: #334155;">
+                  ${fs.items.map((i) => `${i.name} (KSh ${i.amount.toLocaleString()})`).join(' • ')}
+                </td>
+                <td style="text-align: right; font-family: monospace; font-weight: 800; color: #0f172a; font-size: 12px;">
+                  ${school?.currencySymbol || 'KSh'} ${fs.totalAmount.toLocaleString()}
+                </td>
+              </tr>
+            `
+              )
+              .join('')}
+          </tbody>
+        </table>
+
+        <div class="ancillary-grid">
+          <div class="ancillary-card">
+            <div class="ancillary-title">One-Time & Ancillary Fees</div>
+            <div style="font-size: 10.5px; color: #475569; line-height: 1.5;">
+              <div>• <strong>New Student Admission & Registration:</strong> KSh 3,000 (one-off)</div>
+              <div>• <strong>Full School Uniform Package:</strong> KSh 6,500 (2 sets, jacket, sportswear)</div>
+              <div>• <strong>KPSEA / KJSEA KNEC Candidate Registration:</strong> Free (Fully MoE Subsidized)</div>
+            </div>
+          </div>
+          <div class="ancillary-card">
+            <div class="ancillary-title">Optional Door-to-Door School Transport</div>
+            <div style="font-size: 10.5px; color: #475569; line-height: 1.5;">
+              <div>• <strong>Zone 1 (Immediate / Kasarani / Clay City):</strong> KSh 13,500 / term</div>
+              <div>• <strong>Zone 2 (Mwiki / Hunters / Roysambu / Mirema):</strong> KSh 17,400 / term</div>
+              <div>• <strong>Zone 3 (Kahawa West / Zimmerman / Thome):</strong> KSh 21,600 / term</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="payment-channels">
+          <div class="channel-title">Authorized Institutional Payment Channels</div>
+          <div class="channels-grid">
+            <div class="channel-card">
+              <div class="channel-name">LIPA NA M-PESA PAYBILL</div>
+              <div style="font-size: 10.5px;">Business No: <strong>522522</strong></div>
+              <div style="font-size: 10.5px;">Account No: <strong>[Student Admission Number]</strong></div>
+            </div>
+            <div class="channel-card">
+              <div class="channel-name" style="color: #1e3a8a;">EQUITY BANK DIRECT DEPOSIT</div>
+              <div style="font-size: 10.5px;">Account Name: <strong>${school?.name || 'Gracia Learning Centre'}</strong></div>
+              <div style="font-size: 10.5px;">Account No: <strong>${school?.paymentSettings?.bankAccountNumber || '0180293847192'}</strong> • Nyahururu Branch</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-box">
+          <div>
+            <div style="font-size: 10.5px; color: #475569;">Bursar & Finance Office • ${school?.name || 'Gracia Learning Centre'}</div>
+            <div style="font-size: 9.5px; color: #94a3b8; margin-top: 2px;">Fees are payable on or before the first day of each term. Flexible 3-month installments available upon request.</div>
           </div>
           <div class="stamp-box">
             Official School Stamp & Seal

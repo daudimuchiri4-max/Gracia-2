@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { operationsService } from '../../services/operationsService';
-import { DEFAULT_CBC_FEE_STRUCTURES } from '../../services/feeAndPaymentService';
+import { feeService, DEFAULT_CBC_FEE_STRUCTURES } from '../../services/feeAndPaymentService';
+import { printerService } from '../../services/printerService';
 import { DEFAULT_WEBSITE_CONTENT, DEFAULT_SCHOOL_ID } from '../../services/schoolService';
 import { WebsiteContent, GradeLevel, UserRole, HeroSlide, TypographyStyle, FeeStructure } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -37,6 +38,13 @@ import {
   Smartphone,
   Check,
   Download,
+  Table as TableIcon,
+  LayoutGrid,
+  Bus,
+  Shirt,
+  UserPlus,
+  Percent,
+  FileText,
 } from 'lucide-react';
 
 interface PublicWebsiteProps {
@@ -44,7 +52,8 @@ interface PublicWebsiteProps {
   onOpenCMS?: () => void;
 }
 
-type FeeTierCategory = 'EARLY_YEARS' | 'LOWER_PRIMARY' | 'UPPER_PRIMARY' | 'JUNIOR_SECONDARY';
+type FeeTierCategory = 'ALL' | 'EARLY_YEARS' | 'LOWER_PRIMARY' | 'UPPER_PRIMARY' | 'JUNIOR_SECONDARY';
+type FeeViewMode = 'CARDS' | 'TABLE';
 
 export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onOpenCMS }) => {
   const { school, user } = useAuth();
@@ -57,7 +66,8 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
       createdAt: '2026-01-01T00:00:00.000Z',
     }))
   );
-  const [selectedFeeCategory, setSelectedFeeCategory] = useState<FeeTierCategory>('LOWER_PRIMARY');
+  const [selectedFeeCategory, setSelectedFeeCategory] = useState<FeeTierCategory>('ALL');
+  const [feeViewMode, setFeeViewMode] = useState<FeeViewMode>('CARDS');
   const [isFeePrintModalOpen, setIsFeePrintModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalRole, setAuthModalRole] = useState<UserRole>('SCHOOL_ADMIN');
@@ -138,6 +148,16 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
           typography: data.typography || DEFAULT_WEBSITE_CONTENT.typography,
           logoUrl: data.logoUrl || school?.logoUrl || DEFAULT_WEBSITE_CONTENT.logoUrl,
         });
+      }
+
+      // Load live fee structures
+      try {
+        const fsList = await feeService.getFeeStructures(sid);
+        if (fsList && fsList.length > 0) {
+          setFeeStructures(fsList);
+        }
+      } catch (fsErr) {
+        console.warn('Could not load Firestore fee structures, using defaults:', fsErr);
       }
     } catch (e) {
       console.error('Error loading website content:', e);
@@ -695,31 +715,55 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
         </div>
       </section>
 
-      {/* NEW INTERACTIVE FEE STRUCTURE SECTION */}
+      {/* NEW INTERACTIVE EXACT FEE STRUCTURE SECTION */}
       <section id="fees" className="py-20 bg-slate-900 text-white relative overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-12 relative z-10">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-10 relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-slate-800 pb-8">
             <div className="space-y-3 max-w-2xl">
               <Badge variant="primary" size="md">
-                2026 OFFICIAL FEE SCHEDULE
+                OFFICIAL 2026 FEE SCHEDULE
               </Badge>
               <h3 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
-                Transparent Kenyan CBC Fee Structure
+                Exact Kenyan CBC Academic Fee Structure
               </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                All-inclusive termly fees covering full CBC tuition, continuous assessment portfolios, nutritious hot lunch, digital coding labs, and co-curricular activities.
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                Clear, all-inclusive termly fees with zero hidden costs. Covering full CBC tuition, continuous assessment portfolios, nutritious hot lunch, digital coding labs, and co-curricular activities.
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* View Mode Toggle: Cards vs Table */}
+              <div className="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center">
+                <button
+                  type="button"
+                  onClick={() => setFeeViewMode('CARDS')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    feeViewMode === 'CARDS' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" /> Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeeViewMode('TABLE')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    feeViewMode === 'TABLE' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <TableIcon className="w-3.5 h-3.5" /> Full Matrix Table
+                </button>
+              </div>
+
               <Button
                 variant="outline"
                 size="md"
                 icon={<Printer className="w-4 h-4 text-amber-400" />}
-                onClick={() => setIsFeePrintModalOpen(true)}
+                onClick={() => {
+                  printerService.printMasterFeeSchedule(feeStructures, school, '2026');
+                }}
                 className="text-white border-slate-700 hover:bg-slate-800 font-bold"
               >
-                Print Fee Schedule
+                Print Official Schedule
               </Button>
               <Button
                 variant="primary"
@@ -733,107 +777,254 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
           </div>
 
           {/* Grade Tier Category Tabs */}
-          <div className="flex flex-wrap gap-2 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800 max-w-3xl">
+          <div className="flex flex-wrap gap-2 p-1.5 bg-slate-950/90 rounded-2xl border border-slate-800">
             <button
-              onClick={() => setSelectedFeeCategory('EARLY_YEARS')}
-              className={`flex-1 min-w-[140px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                selectedFeeCategory === 'EARLY_YEARS'
+              onClick={() => setSelectedFeeCategory('ALL')}
+              className={`flex-1 min-w-[120px] px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                selectedFeeCategory === 'ALL'
                   ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
               }`}
             >
-              Early Years (PP1 - PP2)
+              All Grades (Playgroup - Grade 9)
+            </button>
+            <button
+              onClick={() => setSelectedFeeCategory('EARLY_YEARS')}
+              className={`flex-1 min-w-[130px] px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                selectedFeeCategory === 'EARLY_YEARS'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+              }`}
+            >
+              Early Years (Playgroup, PP1, PP2)
             </button>
             <button
               onClick={() => setSelectedFeeCategory('LOWER_PRIMARY')}
-              className={`flex-1 min-w-[140px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`flex-1 min-w-[130px] px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                 selectedFeeCategory === 'LOWER_PRIMARY'
                   ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
               }`}
             >
               Lower Primary (Grades 1-3)
             </button>
             <button
               onClick={() => setSelectedFeeCategory('UPPER_PRIMARY')}
-              className={`flex-1 min-w-[140px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`flex-1 min-w-[130px] px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                 selectedFeeCategory === 'UPPER_PRIMARY'
                   ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
               }`}
             >
               Upper Primary (Grades 4-6)
             </button>
             <button
               onClick={() => setSelectedFeeCategory('JUNIOR_SECONDARY')}
-              className={`flex-1 min-w-[140px] px-4 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+              className={`flex-1 min-w-[130px] px-3.5 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                 selectedFeeCategory === 'JUNIOR_SECONDARY'
                   ? 'bg-blue-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
               }`}
             >
               Junior School (Grades 7-9)
             </button>
           </div>
 
-          {/* Cards for the selected Category */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {currentCategoryStructures.map((fs) => (
-              <div
-                key={fs.id}
-                className="bg-slate-800/80 rounded-3xl border border-slate-700/80 p-6 flex flex-col justify-between shadow-lg hover:border-blue-500/60 transition-all"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-700 pb-4">
-                    <div>
-                      <h4 className="text-xl font-black text-white">{fs.classLevel}</h4>
-                      <span className="text-[11px] text-blue-300 font-medium">{fs.term} • Academic Year 2026</span>
-                    </div>
-                    <Badge variant="primary" size="sm">
-                      CBC Standard
-                    </Badge>
-                  </div>
+          {/* VIEW MODE 1: CARDS BREAKDOWN */}
+          {feeViewMode === 'CARDS' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {currentCategoryStructures.map((fs) => {
+                const tierName = ['Playgroup', 'PP1', 'PP2'].includes(fs.classLevel)
+                  ? 'Early Years'
+                  : ['Grade 1', 'Grade 2', 'Grade 3'].includes(fs.classLevel)
+                  ? 'Lower Primary'
+                  : ['Grade 4', 'Grade 5', 'Grade 6'].includes(fs.classLevel)
+                  ? 'Upper Primary'
+                  : 'Junior Secondary';
 
-                  <div className="py-2">
-                    <span className="text-xs text-slate-400 block font-medium">Total Termly Fee</span>
-                    <div className="text-3xl font-black text-amber-400 font-mono mt-0.5">
-                      {school?.currencySymbol || 'KSh'} {fs.totalAmount.toLocaleString()}
-                    </div>
-                    <span className="text-[10px] text-slate-400">Includes Tuition, Meals & Activities</span>
-                  </div>
+                const annualEst = fs.totalAmount * 3;
 
-                  {/* Line Items */}
-                  <div className="space-y-2 border-t border-slate-700/60 pt-4">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Itemized Cost Breakdown
-                    </span>
-                    <div className="space-y-2 text-xs">
-                      {fs.items.map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-slate-300">
-                          <span className="flex items-center gap-1.5 font-medium">
-                            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {item.name}
+                return (
+                  <div
+                    key={fs.id}
+                    className="bg-slate-800/90 rounded-3xl border border-slate-700 p-6 flex flex-col justify-between shadow-lg hover:border-blue-500 transition-all group"
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-start justify-between border-b border-slate-700/80 pb-4">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 block mb-0.5">
+                            {tierName}
                           </span>
-                          <span className="font-bold text-white">
-                            {school?.currencySymbol || 'KSh'} {item.amount.toLocaleString()}
+                          <h4 className="text-2xl font-black text-white">{fs.classLevel}</h4>
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            {fs.term} • Academic Year {fs.academicYear}
                           </span>
                         </div>
-                      ))}
+                        <Badge variant="primary" size="sm">
+                          CBC 2-6-3-3
+                        </Badge>
+                      </div>
+
+                      {/* Total Term & Annual Numbers */}
+                      <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-700/60">
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-xs text-slate-400 font-medium">Exact Term Fee</span>
+                          <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded">
+                            All-Inclusive
+                          </span>
+                        </div>
+                        <div className="text-3xl font-black text-amber-400 font-mono mt-1">
+                          {school?.currencySymbol || 'KSh'} {fs.totalAmount.toLocaleString()}
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-slate-800 flex justify-between text-[11px] text-slate-400">
+                          <span>Full Year (3 Terms):</span>
+                          <strong className="text-slate-200 font-mono">
+                            {school?.currencySymbol || 'KSh'} {annualEst.toLocaleString()}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Itemized Line Items Breakdown */}
+                      <div className="space-y-2 pt-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Exact Itemized Breakdown
+                        </span>
+                        <div className="space-y-2 text-xs">
+                          {fs.items.map((item, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-slate-300 py-0.5 border-b border-slate-800/40">
+                              <span className="flex items-center gap-1.5 font-medium pr-2">
+                                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {item.name}
+                              </span>
+                              <span className="font-bold text-white font-mono shrink-0">
+                                {school?.currencySymbol || 'KSh'} {item.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 mt-6 border-t border-slate-700/80">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        className="w-full bg-blue-600 hover:bg-blue-500 font-bold justify-center"
+                        onClick={() => {
+                          setAppForm((prev) => ({ ...prev, desiredClass: fs.classLevel }));
+                          setIsAdmissionModalOpen(true);
+                        }}
+                      >
+                        Enroll for {fs.classLevel}
+                      </Button>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* VIEW MODE 2: COMPREHENSIVE COMPARISON MATRIX TABLE */
+            <div className="bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+              <div className="p-4 bg-slate-900/80 border-b border-slate-800 flex justify-between items-center flex-wrap gap-2">
+                <div>
+                  <h4 className="font-black text-white text-base">Complete CBC Multi-Grade Fee Schedule</h4>
+                  <p className="text-xs text-slate-400">All 11 learning levels with exact itemized vote-heads</p>
                 </div>
-
-                <div className="pt-6 mt-6 border-t border-slate-700">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="w-full bg-blue-600 hover:bg-blue-500 font-bold justify-center"
-                    onClick={() => setIsAdmissionModalOpen(true)}
-                  >
-                    Apply for {fs.classLevel}
-                  </Button>
-                </div>
+                <Badge variant="success" size="sm">
+                  Verified Academic Year 2026
+                </Badge>
               </div>
-            ))}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900 text-slate-300 border-b border-slate-800 font-bold">
+                      <th className="p-3.5 text-white">Class Level</th>
+                      <th className="p-3.5">Curriculum Tier</th>
+                      <th className="p-3.5 text-right">Tuition</th>
+                      <th className="p-3.5 text-right">Hot Lunch</th>
+                      <th className="p-3.5 text-right">CBC / Science / Tech</th>
+                      <th className="p-3.5 text-right">Activity & Swimming</th>
+                      <th className="p-3.5 text-right">Assessment & Portfolios</th>
+                      <th className="p-3.5 text-right text-amber-400 font-black">Total / Term</th>
+                      <th className="p-3.5 text-right text-slate-400">Annual Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70 text-slate-300">
+                    {currentCategoryStructures.map((fs) => {
+                      const tier = ['Playgroup', 'PP1', 'PP2'].includes(fs.classLevel)
+                        ? 'Early Years'
+                        : ['Grade 1', 'Grade 2', 'Grade 3'].includes(fs.classLevel)
+                        ? 'Lower Primary'
+                        : ['Grade 4', 'Grade 5', 'Grade 6'].includes(fs.classLevel)
+                        ? 'Upper Primary'
+                        : 'Junior Secondary';
+
+                      const tuitionItem = fs.items.find((i) => i.name.toLowerCase().includes('tuition'))?.amount || 0;
+                      const lunchItem = fs.items.find((i) => i.name.toLowerCase().includes('lunch') || i.name.toLowerCase().includes('snack'))?.amount || 0;
+                      const materialsItem = fs.items.find((i) => i.name.toLowerCase().includes('workbook') || i.name.toLowerCase().includes('science') || i.name.toLowerCase().includes('practical') || i.name.toLowerCase().includes('curriculum') || i.name.toLowerCase().includes('sensory'))?.amount || 0;
+                      const activityItem = fs.items.find((i) => i.name.toLowerCase().includes('activity') || i.name.toLowerCase().includes('swimming') || i.name.toLowerCase().includes('sports'))?.amount || 0;
+                      const assessmentItem = fs.items.find((i) => i.name.toLowerCase().includes('assessment') || i.name.toLowerCase().includes('knec') || i.name.toLowerCase().includes('medical') || i.name.toLowerCase().includes('ict') || i.name.toLowerCase().includes('coding'))?.amount || 0;
+
+                      return (
+                        <tr key={fs.id} className="hover:bg-slate-900/60 transition-colors">
+                          <td className="p-3.5 font-bold text-white flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                            {fs.classLevel}
+                          </td>
+                          <td className="p-3.5 text-slate-400">{tier}</td>
+                          <td className="p-3.5 text-right font-mono">{school?.currencySymbol || 'KSh'} {tuitionItem.toLocaleString()}</td>
+                          <td className="p-3.5 text-right font-mono">{school?.currencySymbol || 'KSh'} {lunchItem.toLocaleString()}</td>
+                          <td className="p-3.5 text-right font-mono">{school?.currencySymbol || 'KSh'} {materialsItem.toLocaleString()}</td>
+                          <td className="p-3.5 text-right font-mono">{school?.currencySymbol || 'KSh'} {activityItem.toLocaleString()}</td>
+                          <td className="p-3.5 text-right font-mono">{school?.currencySymbol || 'KSh'} {assessmentItem.toLocaleString()}</td>
+                          <td className="p-3.5 text-right font-mono font-black text-amber-400 text-sm">
+                            {school?.currencySymbol || 'KSh'} {fs.totalAmount.toLocaleString()}
+                          </td>
+                          <td className="p-3.5 text-right font-mono text-slate-400 font-semibold">
+                            {school?.currencySymbol || 'KSh'} {(fs.totalAmount * 3).toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ANCILLARY & OPTIONAL SERVICES BREAKDOWN */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                <UserPlus className="w-4 h-4" /> Admission & Registration
+              </div>
+              <p className="text-xl font-black text-white font-mono">{school?.currencySymbol || 'KSh'} 3,000</p>
+              <p className="text-[11px] text-slate-400">One-off fee upon initial entry. Covers student file, Nemis/Kemis profile and learner diary.</p>
+            </div>
+
+            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+              <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
+                <Shirt className="w-4 h-4" /> Complete Uniform Pack
+              </div>
+              <p className="text-xl font-black text-white font-mono">{school?.currencySymbol || 'KSh'} 6,500</p>
+              <p className="text-[11px] text-slate-400">Full starter kit: 2 day uniforms, 1 tracksuit / PE attire, warm heavy fleece sweater & ties.</p>
+            </div>
+
+            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                <Bus className="w-4 h-4" /> Optional Door-to-Door Van
+              </div>
+              <p className="text-xl font-black text-white font-mono">From {school?.currencySymbol || 'KSh'} 4,500/mo</p>
+              <p className="text-[11px] text-slate-400">Zone 1 (Kasarani/Clay City): KSh 13,500/term. Zone 2 (Mwiki/Roysambu): KSh 17,400/term. Zone 3: KSh 21,600/term.</p>
+            </div>
+
+            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+              <div className="flex items-center gap-2 text-purple-400 font-bold text-sm">
+                <Percent className="w-4 h-4" /> Sibling Discount Policy
+              </div>
+              <p className="text-xl font-black text-white font-mono">5% Tuition Rebate</p>
+              <p className="text-[11px] text-slate-400">Families enrolling 2 or more siblings enjoy an automatic 5% tuition rebate on subsequent children.</p>
+            </div>
           </div>
 
           {/* Payment Channels Advisory Banner */}
@@ -858,7 +1049,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
               <h5 className="font-bold text-sm text-white flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-amber-400" /> Flexible Term Installments
               </h5>
-              <p className="text-xs text-slate-400">Up to 3 flexible monthly installments permitted upon agreement with the finance bursar.</p>
+              <p className="text-xs text-slate-400">Up to 3 flexible monthly installments permitted upon arrangement with the bursar.</p>
             </div>
           </div>
         </div>
@@ -965,72 +1156,87 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
 
       {/* Footer with School Logo */}
       <footer className="mt-auto bg-slate-950 text-slate-400 py-12 border-t border-slate-800 text-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            {schoolLogoUrl && (
-              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 p-1 flex items-center justify-center overflow-hidden">
-                <img
-                  src={schoolLogoUrl}
-                  alt={school?.name}
-                  className="w-full h-full object-contain"
-                  referrerPolicy="no-referrer"
-                />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-8">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              {schoolLogoUrl && (
+                <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 p-1 flex items-center justify-center overflow-hidden">
+                  <img
+                    src={schoolLogoUrl}
+                    alt={school?.name}
+                    className="w-full h-full object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              )}
+              <div>
+                <span className="font-black text-sm text-white block">
+                  {school?.name || 'Gracia Learning Centre'}
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Registered with the Kenya Ministry of Education • Playgroup to Grade 9 CBC
+                </p>
               </div>
-            )}
-            <div>
-              <span className="font-black text-sm text-white block">
-                {school?.name || 'Gracia Learning Centre'}
-              </span>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Registered with the Kenya Ministry of Education • Playgroup to Grade 9 CBC
-              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-4 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
+              >
+                About Us
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  document.getElementById('facilities')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
+              >
+                Facilities
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
+              >
+                Fee Schedule
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAdmissionModalOpen(true)}
+                className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
+              >
+                Admissions
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  document.getElementById('faqs')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
+              >
+                FAQs
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-4 text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
-            >
-              About Us
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                document.getElementById('facilities')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
-            >
-              Facilities
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                document.getElementById('fees')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
-            >
-              Fee Schedule
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsAdmissionModalOpen(true)}
-              className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
-            >
-              Admissions
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                document.getElementById('faqs')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="hover:text-white cursor-pointer font-semibold text-slate-400 transition-colors"
-            >
-              FAQs
-            </button>
+          {/* Sub-footer Copyright Bar */}
+          <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
+            <div>
+              © {new Date().getFullYear()} {school?.name || 'Gracia Learning Centre'}. All rights reserved.
+            </div>
+            <div className="flex items-center gap-2">
+              <span>Powered by</span>
+              <span className="font-semibold text-slate-300">Davetch Solutions</span>
+              <span>•</span>
+              <span className="text-slate-400 font-medium">Copyright Davetch Solutions</span>
+            </div>
           </div>
         </div>
       </footer>
