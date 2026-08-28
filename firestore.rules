@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Public website & ERP collections for schools (including students, invoices, payments, classes, teachers, etc.)
+    match /schools/{schoolId} {
+      allow read, write: if true;
+
+      // Sub-collections under school
+      match /{subcollection}/{docId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Global user profiles
+    match /users/{userId} {
+      allow read, create, update: if true;
+      allow delete: if isAuthenticated();
+    }
+
+    // Public admission applications submitted online
+    match /admissionApplications/{appId} {
+      allow create, read, update, delete: if true;
+    }
+
+    // System-wide audit logs
+    match /auditLogs/{logId} {
+      allow read, create, update: if true;
+      allow delete: if isAuthenticated();
+    }
+  }
+}

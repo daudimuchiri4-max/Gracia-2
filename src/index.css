@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@media print {
+  /* Hide all non-printable UI elements */
+  nav,
+  header,
+  aside,
+  footer,
+  #sidebar,
+  #topbar,
+  .no-print,
+  button,
+  .btn,
+  .modal-backdrop,
+  [role="dialog"] > div:first-child,
+  .toast-container {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Printable container styling */
+  #printable-receipt,
+  #printable-reportcard,
+  .printable-area {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Page break controls */
+  .page-break-after {
+    page-break-after: always;
+  }
+
+  .page-break-inside-avoid {
+    page-break-inside: avoid;
+  }
+}

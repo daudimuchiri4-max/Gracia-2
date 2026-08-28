@@ -1,0 +1,7 @@
+{
+  "name": "Primary School ERP & Management System",
+  "description": "Comprehensive Single-School ERP & Academic Management System from Playgroup to Grade 9 featuring public website CMS, student & staff records, Kenyan CBC/CBE rubrics & report cards, fee invoicing & receipts, daily attendance, POS canteen cashier, library, transport, and dedicated parent & teacher portals.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
