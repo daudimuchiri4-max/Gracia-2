@@ -33,6 +33,8 @@ export const studentService = {
           (s) =>
             s.fullName?.toLowerCase().includes(q) ||
             s.admissionNumber?.toLowerCase().includes(q) ||
+            s.assessmentNumber?.toLowerCase().includes(q) ||
+            s.kemisNumber?.toLowerCase().includes(q) ||
             s.upiNumber?.toLowerCase().includes(q) ||
             s.nemisNumber?.toLowerCase().includes(q) ||
             s.birthCertNumber?.toLowerCase().includes(q) ||

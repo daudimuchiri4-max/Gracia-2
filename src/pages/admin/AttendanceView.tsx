@@ -624,7 +624,7 @@ export const AttendanceView: React.FC = () => {
 
     const cleanNorm = cleanText.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-    // Match student by ID, admission number, UPI, NEMIS, birth cert, or name
+    // Match student by ID, admission number, Assessment Number, KEMIS, UPI, NEMIS, birth cert, or name
     const matched = studentPool.find((s) => {
       if (parsed?.studentId && s.id.toLowerCase() === parsed.studentId.toLowerCase()) {
         return true;
@@ -639,10 +639,18 @@ export const AttendanceView: React.FC = () => {
       ) {
         return true;
       }
-      if (parsed?.upiNumber && s.upiNumber && s.upiNumber.toLowerCase() === parsed.upiNumber.toLowerCase()) {
+      if (
+        (parsed?.assessmentNumber || parsed?.upiNumber) &&
+        (s.assessmentNumber || s.upiNumber) &&
+        (s.assessmentNumber || s.upiNumber)?.toLowerCase() === (parsed.assessmentNumber || parsed.upiNumber)?.toLowerCase()
+      ) {
         return true;
       }
-      if (parsed?.nemisNumber && s.nemisNumber && s.nemisNumber.toLowerCase() === parsed.nemisNumber.toLowerCase()) {
+      if (
+        (parsed?.kemisNumber || parsed?.nemisNumber) &&
+        (s.kemisNumber || s.nemisNumber) &&
+        (s.kemisNumber || s.nemisNumber)?.toLowerCase() === (parsed.kemisNumber || parsed.nemisNumber)?.toLowerCase()
+      ) {
         return true;
       }
       if (s.admissionNumber.toLowerCase() === cleanText.toLowerCase()) {
@@ -654,10 +662,16 @@ export const AttendanceView: React.FC = () => {
       if (s.id.toLowerCase() === cleanText.toLowerCase()) {
         return true;
       }
-      if (s.upiNumber && s.upiNumber.toLowerCase() === cleanText.toLowerCase()) {
+      if (
+        (s.assessmentNumber && s.assessmentNumber.toLowerCase() === cleanText.toLowerCase()) ||
+        (s.upiNumber && s.upiNumber.toLowerCase() === cleanText.toLowerCase())
+      ) {
         return true;
       }
-      if (s.nemisNumber && s.nemisNumber.toLowerCase() === cleanText.toLowerCase()) {
+      if (
+        (s.kemisNumber && s.kemisNumber.toLowerCase() === cleanText.toLowerCase()) ||
+        (s.nemisNumber && s.nemisNumber.toLowerCase() === cleanText.toLowerCase())
+      ) {
         return true;
       }
       if (s.birthCertNumber && s.birthCertNumber.toLowerCase() === cleanText.toLowerCase()) {

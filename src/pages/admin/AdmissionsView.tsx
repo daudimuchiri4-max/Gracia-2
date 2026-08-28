@@ -80,8 +80,10 @@ export const AdmissionsView: React.FC = () => {
         gender: app.gender,
         dateOfBirth: app.dateOfBirth,
         birthCertNumber: app.birthCertNumber || '',
-        upiNumber: app.upiOrNemis?.toUpperCase().startsWith('UPI') ? app.upiOrNemis : (app.upiOrNemis || ''),
-        nemisNumber: app.upiOrNemis?.toUpperCase().startsWith('NEMIS') ? app.upiOrNemis : (app.upiOrNemis || ''),
+        assessmentNumber: (app.assessmentOrKemis || app.upiOrNemis)?.toUpperCase().startsWith('ASN') || (app.assessmentOrKemis || app.upiOrNemis)?.toUpperCase().startsWith('UPI') ? (app.assessmentOrKemis || app.upiOrNemis) : (app.assessmentOrKemis || app.upiOrNemis || ''),
+        kemisNumber: (app.assessmentOrKemis || app.upiOrNemis)?.toUpperCase().startsWith('KEMIS') || (app.assessmentOrKemis || app.upiOrNemis)?.toUpperCase().startsWith('NEMIS') ? (app.assessmentOrKemis || app.upiOrNemis) : (app.assessmentOrKemis || app.upiOrNemis || ''),
+        upiNumber: (app.assessmentOrKemis || app.upiOrNemis || ''),
+        nemisNumber: (app.assessmentOrKemis || app.upiOrNemis || ''),
         nationality: 'Kenyan',
         admissionDate: new Date().toISOString().split('T')[0],
         currentClass: app.desiredClass,
@@ -246,10 +248,10 @@ export const AdmissionsView: React.FC = () => {
                   <p className="text-sm font-mono font-bold text-slate-900">{selectedApp.birthCertNumber}</p>
                 </div>
               )}
-              {selectedApp.upiOrNemis && (
+              {(selectedApp.assessmentOrKemis || selectedApp.upiOrNemis) && (
                 <div>
-                  <span className="text-slate-400 font-medium">UPI / NEMIS Number:</span>
-                  <p className="text-sm font-mono font-bold text-blue-900">{selectedApp.upiOrNemis}</p>
+                  <span className="text-slate-400 font-medium">Assessment / KEMIS Number:</span>
+                  <p className="text-sm font-mono font-bold text-blue-900">{selectedApp.assessmentOrKemis || selectedApp.upiOrNemis}</p>
                 </div>
               )}
               <div className="col-span-2">

@@ -687,19 +687,13 @@ class PrinterService {
       </head>
       <body>
         <div class="text-center">
-          ${school?.logoUrl ? `
-            <div style="margin-bottom: 6px;">
-              <img src="${school.logoUrl}" alt="Logo" style="max-height: ${is58 ? '36px' : '48px'}; max-width: 80%; object-fit: contain; filter: grayscale(100%) contrast(140%);" />
-            </div>
-          ` : `
-            <div style="display: inline-block; border: 1.5px solid #000; padding: 2px 8px; font-size: ${is58 ? '11px' : '13px'}; font-weight: 900; margin-bottom: 4px; text-transform: uppercase;">
-              ${(school?.name || 'GLC').split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()}
-            </div>
-          `}
+          <div style="margin-bottom: 6px;">
+            <img src="${(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}" alt="Logo" style="max-height: ${is58 ? '42px' : '56px'}; max-width: 80%; object-fit: contain;" />
+          </div>
           <div class="title">${school?.name || 'Gracia Learning Centre'}</div>
-          <div class="subtitle">${school?.motto || 'Nurturing Potential, Inspiring Excellence'}</div>
+          <div class="subtitle" style="font-weight: bold; color: #333;">${school?.motto || '— I can! I will! —'}</div>
           <div class="subtitle">${school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi, Kenya'}</div>
-          <div class="subtitle">Tel: ${school?.phone || '+254 722 000 000'}</div>
+          <div class="subtitle">Tel: ${school?.phone || '+254 722 000 123'}</div>
           <div class="divider"></div>
           <div class="badge">OFFICIAL RECEIPT / POS SLIP</div>
         </div>
@@ -778,17 +772,11 @@ class PrinterService {
       <body>
         <div class="header">
           <div style="display: flex; align-items: center; gap: 16px;">
-            ${school?.logoUrl ? `
-              <img src="${school.logoUrl}" alt="School Crest" style="width: 70px; height: 70px; object-fit: contain; border-radius: 8px; border: 1px solid #e2e8f0; padding: 3px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);" />
-            ` : `
-              <div style="width: 60px; height: 60px; background: #1e3a8a; color: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; letter-spacing: -0.5px;">
-                ${(school?.name || 'GLC').split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()}
-              </div>
-            `}
+            <img src="${(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}" alt="School Crest" style="width: 76px; height: 76px; object-fit: contain; padding: 2px;" />
             <div>
-              <div class="school-name">${school?.name || 'Gracia Learning Centre & Junior School'}</div>
-              <div class="school-sub">${school?.motto || 'Nurturing Potential, Inspiring Excellence'}</div>
-              <div class="school-sub">${school?.address || 'Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'} • Email: ${school?.email || 'admissions@gracialearningcentre.ac.ke'}</div>
+              <div class="school-name">${school?.name || 'Gracia Learning Centre'}</div>
+              <div class="school-sub" style="font-weight: bold; color: #ea580c;">${school?.motto || '— I can! I will! —'}</div>
+              <div class="school-sub">${school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'} • Email: ${school?.email || 'admissions@gracialearningcentre.ac.ke'}</div>
             </div>
           </div>
           <div style="text-align: right;">
@@ -872,17 +860,11 @@ class PrinterService {
       <body>
         <div class="header">
           <div style="display: flex; align-items: center; gap: 14px;">
-            ${school?.logoUrl ? `
-              <img src="${school.logoUrl}" alt="School Crest" style="width: 60px; height: 60px; object-fit: contain; border-radius: 6px; border: 1px solid #cbd5e1; padding: 2px; background: #fff;" />
-            ` : `
-              <div style="width: 52px; height: 52px; background: #0f172a; color: #fff; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 900;">
-                ${(school?.name || 'GLC').split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()}
-              </div>
-            `}
+            <img src="${(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}" alt="School Crest" style="width: 65px; height: 65px; object-fit: contain; padding: 2px;" />
             <div>
-              <div class="school-title">${school?.name || 'Gracia Learning Centre & Junior School'}</div>
-              <div class="school-meta">${school?.motto || 'Nurturing Potential, Inspiring Excellence'}</div>
-              <div class="school-meta">${school?.address || 'Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'} • Email: ${school?.email || 'admissions@gracialearningcentre.ac.ke'}</div>
+              <div class="school-title">${school?.name || 'Gracia Learning Centre'}</div>
+              <div class="school-meta" style="font-weight: bold; color: #ea580c;">${school?.motto || '— I can! I will! —'}</div>
+              <div class="school-meta">${school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'} • Email: ${school?.email || 'admissions@gracialearningcentre.ac.ke'}</div>
             </div>
           </div>
           <div style="text-align: right;">
@@ -1137,17 +1119,11 @@ class PrinterService {
       <body>
         <div class="header">
           <div style="display: flex; align-items: center; gap: 14px;">
-            ${school?.logoUrl ? `
-              <img src="${school.logoUrl}" alt="School Crest" style="width: 60px; height: 60px; object-fit: contain; border-radius: 6px; border: 1px solid #cbd5e1; padding: 2px; background: #fff;" />
-            ` : `
-              <div style="width: 50px; height: 50px; background: #0f172a; color: #fff; border-radius: 6px; display: align-items: center; justify-content: center; font-size: 19px; font-weight: 900;">
-                ${(school?.name || 'GLC').split(' ').map(w => w[0]).join('').slice(0, 3).toUpperCase()}
-              </div>
-            `}
+            <img src="${(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}" alt="School Crest" style="width: 65px; height: 65px; object-fit: contain; padding: 2px;" />
             <div>
               <div class="school-title">${school?.name || 'Gracia Learning Centre'}</div>
-              <div class="school-sub">${school?.motto || 'Nurturing Potential, Inspiring Excellence'}</div>
-              <div class="school-sub">${school?.address || 'Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'} • Email: ${school?.email || 'admissions@gracialearningcentre.ac.ke'}</div>
+              <div class="school-sub" style="font-weight: bold; color: #ea580c;">${school?.motto || '— I can! I will! —'}</div>
+              <div class="school-sub">${school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi, Kenya'} • Tel: ${school?.phone || '+254 722 000 123'} • Email: ${school?.email || 'admissions@gracialearningcentre.ac.ke'}</div>
             </div>
           </div>
           <div style="text-align: right;">

@@ -36,27 +36,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       <div id="printable-receipt" className="p-6 bg-white border border-slate-200 rounded-xl space-y-6 text-slate-800">
         {/* School Header */}
         <div className="text-center border-b border-slate-200 pb-4">
-          {school?.logoUrl ? (
-            <div className="flex justify-center mb-2.5">
-              <img
-                src={school.logoUrl}
-                alt={school?.name || 'School Logo'}
-                className="w-16 h-16 object-contain rounded-xl border border-slate-200 p-1 bg-white shadow-xs"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-          ) : (
-            <div className="inline-flex p-2.5 rounded-xl bg-blue-900 text-white mb-2 shadow-xs">
-              <SchoolIcon className="w-6 h-6" />
-            </div>
-          )}
-          <h2 className="text-xl font-bold text-slate-900 uppercase tracking-wide">
+          <div className="flex justify-center mb-3">
+            <img
+              src={school?.logoUrl || '/gracia_logo.svg'}
+              alt={school?.name || 'Gracia Learning Centre'}
+              className="w-20 h-20 object-contain drop-shadow-xs"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 uppercase tracking-wide">
             {school?.name || 'Gracia Learning Centre'}
           </h2>
-          <p className="text-xs text-slate-500 font-medium">{school?.motto || 'Nurturing Potential, Inspiring Excellence'}</p>
-          <p className="text-xs text-slate-600 mt-1">{school?.address} • Tel: {school?.phone} • Email: {school?.email}</p>
-          <div className="mt-3 inline-block px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-full">
-            OFFICIAL RECEIPT
+          <p className="text-xs text-orange-600 font-bold tracking-wider italic mt-0.5">
+            {school?.motto || '— I can! I will! —'}
+          </p>
+          <p className="text-xs text-slate-600 mt-1">{school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi'} • Tel: {school?.phone || '+254 722 000 123'}</p>
+          <div className="mt-2.5 inline-block px-3 py-0.5 bg-blue-900 text-white text-[11px] font-bold tracking-wider rounded-md uppercase">
+            Official Fee Payment Receipt
           </div>
         </div>
 

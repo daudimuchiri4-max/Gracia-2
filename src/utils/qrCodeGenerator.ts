@@ -28,7 +28,12 @@ export const generateStudentQrCode = async (data: StudentQrData): Promise<string
   }
 };
 
-export const parseQrAttendancePayload = (text: string): Partial<StudentQrData> & { upiNumber?: string; nemisNumber?: string } | null => {
+export const parseQrAttendancePayload = (text: string): Partial<StudentQrData> & {
+  assessmentNumber?: string;
+  kemisNumber?: string;
+  upiNumber?: string;
+  nemisNumber?: string;
+} | null => {
   if (!text) return null;
   const clean = text.trim();
   
@@ -42,6 +47,10 @@ export const parseQrAttendancePayload = (text: string): Partial<StudentQrData> &
         parsed.id ||
         parsed.admNo ||
         parsed.admissionNo ||
+        parsed.assessmentNumber ||
+        parsed.kemisNumber ||
+        parsed.asn ||
+        parsed.kemis ||
         parsed.upiNumber ||
         parsed.nemisNumber ||
         parsed.upi ||
@@ -53,8 +62,10 @@ export const parseQrAttendancePayload = (text: string): Partial<StudentQrData> &
           fullName: parsed.fullName || parsed.name,
           classLevel: parsed.classLevel || parsed.class,
           schoolId: parsed.schoolId,
-          upiNumber: parsed.upiNumber || parsed.upi,
-          nemisNumber: parsed.nemisNumber || parsed.nemis,
+          assessmentNumber: parsed.assessmentNumber || parsed.asn || parsed.upiNumber || parsed.upi,
+          kemisNumber: parsed.kemisNumber || parsed.kemis || parsed.nemisNumber || parsed.nemis,
+          upiNumber: parsed.assessmentNumber || parsed.asn || parsed.upiNumber || parsed.upi,
+          nemisNumber: parsed.kemisNumber || parsed.kemis || parsed.nemisNumber || parsed.nemis,
         };
       }
     }
@@ -72,14 +83,16 @@ export const parseQrAttendancePayload = (text: string): Partial<StudentQrData> &
         url.searchParams.get('adm') ||
         url.searchParams.get('admNo') ||
         url.searchParams.get('admissionNo');
-      const upiNumber = url.searchParams.get('upi') || url.searchParams.get('upiNumber');
-      const nemisNumber = url.searchParams.get('nemis') || url.searchParams.get('nemisNumber');
-      if (studentId || admissionNumber || upiNumber || nemisNumber) {
+      const assessmentNumber = url.searchParams.get('assessmentNumber') || url.searchParams.get('asn') || url.searchParams.get('upi') || url.searchParams.get('upiNumber');
+      const kemisNumber = url.searchParams.get('kemis') || url.searchParams.get('kemisNumber') || url.searchParams.get('nemis') || url.searchParams.get('nemisNumber');
+      if (studentId || admissionNumber || assessmentNumber || kemisNumber) {
         return {
           studentId: studentId || undefined,
           admissionNumber: admissionNumber || undefined,
-          upiNumber: upiNumber || undefined,
-          nemisNumber: nemisNumber || undefined,
+          assessmentNumber: assessmentNumber || undefined,
+          kemisNumber: kemisNumber || undefined,
+          upiNumber: assessmentNumber || undefined,
+          nemisNumber: kemisNumber || undefined,
         };
       }
     } catch {
@@ -87,10 +100,12 @@ export const parseQrAttendancePayload = (text: string): Partial<StudentQrData> &
     }
   }
 
-  // 3. Raw text string (Admission Number, UPI, NEMIS, or Student ID)
+  // 3. Raw text string (Admission Number, Assessment Number, KEMIS, UPI, NEMIS, or Student ID)
   return {
     admissionNumber: clean,
     studentId: clean,
+    assessmentNumber: clean,
+    kemisNumber: clean,
     upiNumber: clean,
     nemisNumber: clean,
   };

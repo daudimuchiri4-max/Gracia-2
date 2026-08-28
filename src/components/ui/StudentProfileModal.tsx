@@ -290,12 +290,12 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 <span className="font-bold text-slate-900">{student.dateOfBirth} ({calculateAge(student.dateOfBirth)})</span>
               </div>
               <div>
-                <span className="text-slate-400 font-semibold block">UPI Number (MoE):</span>
-                <span className="font-bold font-mono text-blue-900">{student.upiNumber || 'UPI-PENDING'}</span>
+                <span className="text-slate-400 font-semibold block">Assessment Number (KNEC):</span>
+                <span className="font-bold font-mono text-blue-900">{student.assessmentNumber || student.upiNumber || 'ASN-PENDING'}</span>
               </div>
               <div>
-                <span className="text-slate-400 font-semibold block">NEMIS Number:</span>
-                <span className="font-bold font-mono text-slate-900">{student.nemisNumber || 'NEMIS-PENDING'}</span>
+                <span className="text-slate-400 font-semibold block">KEMIS Number (MoE):</span>
+                <span className="font-bold font-mono text-slate-900">{student.kemisNumber || student.nemisNumber || 'KEMIS-PENDING'}</span>
               </div>
               <div>
                 <span className="text-slate-400 font-semibold block">Birth Certificate No:</span>

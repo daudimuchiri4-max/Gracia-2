@@ -160,8 +160,10 @@ export interface Student {
   id: string;
   schoolId: string;
   admissionNumber: string;
-  upiNumber?: string;
-  nemisNumber?: string;
+  assessmentNumber?: string; // KNEC Assessment Number (formerly UPI)
+  kemisNumber?: string; // MoE KEMIS Number (formerly NEMIS)
+  upiNumber?: string; // Backwards compatibility alias
+  nemisNumber?: string; // Backwards compatibility alias
   firstName: string;
   middleName?: string;
   lastName: string;
@@ -551,7 +553,8 @@ export interface AdmissionApplication {
   gender: 'MALE' | 'FEMALE';
   dateOfBirth: string;
   birthCertNumber?: string;
-  upiOrNemis?: string;
+  assessmentOrKemis?: string; // Assessment Number or KEMIS Number
+  upiOrNemis?: string; // Backwards compatibility alias
   desiredClass: GradeLevel;
   parentFullName: string;
   parentPhone: string;

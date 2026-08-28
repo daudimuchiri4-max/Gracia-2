@@ -61,6 +61,8 @@ export const StudentsView: React.FC = () => {
   // Form State for Add / Edit
   const [formData, setFormData] = useState({
     admissionNumber: '',
+    assessmentNumber: '',
+    kemisNumber: '',
     upiNumber: '',
     nemisNumber: '',
     firstName: '',
@@ -120,6 +122,10 @@ export const StudentsView: React.FC = () => {
       const route = routes.find((r) => r.id === formData.transportRouteId);
       const payload = {
         ...formData,
+        assessmentNumber: formData.assessmentNumber || formData.upiNumber || '',
+        kemisNumber: formData.kemisNumber || formData.nemisNumber || '',
+        upiNumber: formData.assessmentNumber || formData.upiNumber || '',
+        nemisNumber: formData.kemisNumber || formData.nemisNumber || '',
         fullName: `${formData.firstName} ${formData.middleName || ''} ${formData.lastName}`.replace(/\s+/g, ' ').trim(),
         transportRouteName: route?.routeName || '',
         totalBalance: 0,
@@ -169,10 +175,10 @@ export const StudentsView: React.FC = () => {
   };
 
   const exportCSV = () => {
-    const headers = ['Admission No', 'UPI / NEMIS No', 'Full Name', 'Gender', 'Class', 'Stream', 'Status', 'Parent Name', 'Parent Phone', 'Balance'];
+    const headers = ['Admission No', 'Assessment / KEMIS No', 'Full Name', 'Gender', 'Class', 'Stream', 'Status', 'Parent Name', 'Parent Phone', 'Balance'];
     const rows = filteredStudents.map((s) => [
       s.admissionNumber,
-      `"${s.upiNumber || s.nemisNumber || ''}"`,
+      `"${s.assessmentNumber || s.kemisNumber || s.upiNumber || s.nemisNumber || ''}"`,
       `"${s.fullName}"`,
       s.gender,
       s.currentClass,
@@ -202,6 +208,8 @@ export const StudentsView: React.FC = () => {
       !search ||
       s.fullName?.toLowerCase().includes(q) ||
       s.admissionNumber?.toLowerCase().includes(q) ||
+      s.assessmentNumber?.toLowerCase().includes(q) ||
+      s.kemisNumber?.toLowerCase().includes(q) ||
       s.upiNumber?.toLowerCase().includes(q) ||
       s.nemisNumber?.toLowerCase().includes(q) ||
       s.birthCertNumber?.toLowerCase().includes(q) ||
@@ -217,7 +225,7 @@ export const StudentsView: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Student Management Directory</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Playgroup through Grade 9 learner registers, UPI/NEMIS tracking, medical profiles, and CBC portfolios.
+            Playgroup through Grade 9 learner registers, Assessment/KEMIS tracking, medical profiles, and CBC portfolios.
           </p>
         </div>
 
@@ -246,6 +254,8 @@ export const StudentsView: React.FC = () => {
               );
               setFormData({
                 admissionNumber: nextAdm,
+                assessmentNumber: '',
+                kemisNumber: '',
                 upiNumber: '',
                 nemisNumber: '',
                 firstName: '',
@@ -404,8 +414,10 @@ export const StudentsView: React.FC = () => {
                           setSelectedStudent(std);
                           setFormData({
                             admissionNumber: std.admissionNumber,
-                            upiNumber: std.upiNumber || '',
-                            nemisNumber: std.nemisNumber || '',
+                            assessmentNumber: std.assessmentNumber || std.upiNumber || '',
+                            kemisNumber: std.kemisNumber || std.nemisNumber || '',
+                            upiNumber: std.assessmentNumber || std.upiNumber || '',
+                            nemisNumber: std.kemisNumber || std.nemisNumber || '',
                             firstName: std.firstName,
                             middleName: std.middleName || '',
                             lastName: std.lastName,
@@ -555,22 +567,34 @@ export const StudentsView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="font-semibold text-slate-700">UPI Number</label>
+              <label className="font-semibold text-slate-700">Assessment Number (KNEC)</label>
               <input
                 type="text"
-                placeholder="e.g. UPI-9281920"
-                value={formData.upiNumber}
-                onChange={(e) => setFormData({ ...formData, upiNumber: e.target.value })}
+                placeholder="e.g. 269001-0045 or ASN-9281920"
+                value={formData.assessmentNumber || formData.upiNumber}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    assessmentNumber: e.target.value,
+                    upiNumber: e.target.value,
+                  })
+                }
                 className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-800"
               />
             </div>
             <div>
-              <label className="font-semibold text-slate-700">NEMIS Number</label>
+              <label className="font-semibold text-slate-700">KEMIS Number</label>
               <input
                 type="text"
-                placeholder="e.g. NEMIS-12345"
-                value={formData.nemisNumber}
-                onChange={(e) => setFormData({ ...formData, nemisNumber: e.target.value })}
+                placeholder="e.g. KEMIS-12345"
+                value={formData.kemisNumber || formData.nemisNumber}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    kemisNumber: e.target.value,
+                    nemisNumber: e.target.value,
+                  })
+                }
                 className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-800"
               />
             </div>

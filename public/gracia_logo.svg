@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 550" width="100%" height="100%">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="shieldBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#f0f4f8"/>
+    </linearGradient>
+    <linearGradient id="navyRibbon" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#142c65"/>
+      <stop offset="50%" stop-color="#0c1d45"/>
+      <stop offset="100%" stop-color="#081430"/>
+    </linearGradient>
+    <linearGradient id="orangeBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="50%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+    <linearGradient id="goldLaurel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#ea580c"/>
+    </linearGradient>
+    <linearGradient id="sunburstGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#fdba74"/>
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Laurel Wreath Leaves (Left) -->
+  <g fill="url(#goldLaurel)">
+    <path d="M 65,140 C 45,170 30,220 35,270 C 40,240 55,200 75,170 Z" />
+    <path d="M 50,180 C 25,210 15,260 20,300 C 30,270 45,230 62,205 Z" />
+    <path d="M 40,240 C 15,280 10,330 18,370 C 25,335 40,295 55,265 Z" />
+    <path d="M 38,300 C 18,345 20,390 32,425 C 38,390 50,350 60,325 Z" />
+    <!-- Blue accent leaves -->
+    <path d="M 60,280 C 45,315 40,360 48,395 C 55,365 68,330 75,305 Z" fill="#0f2b5c" />
+    <path d="M 75,330 C 60,370 62,410 72,440 C 78,410 90,375 95,350 Z" fill="#0f2b5c" />
+  </g>
+
+  <!-- Laurel Wreath Leaves (Right) -->
+  <g fill="url(#goldLaurel)">
+    <path d="M 435,140 C 455,170 470,220 465,270 C 460,240 445,200 425,170 Z" />
+    <path d="M 450,180 C 475,210 485,260 480,300 C 470,270 455,230 438,205 Z" />
+    <path d="M 460,240 C 485,280 490,330 482,370 C 475,335 460,295 445,265 Z" />
+    <path d="M 462,300 C 482,345 480,390 468,425 C 462,390 450,350 440,325 Z" />
+    <!-- Blue accent leaves -->
+    <path d="M 440,280 C 455,315 460,360 452,395 C 445,365 432,330 425,305 Z" fill="#0f2b5c" />
+    <path d="M 425,330 C 440,370 438,410 428,440 C 422,410 410,375 405,350 Z" fill="#0f2b5c" />
+  </g>
+
+  <!-- Main Shield Outer Borders -->
+  <!-- Outer Blue Frame -->
+  <path d="M 90,75 L 180,75 L 195,40 L 305,40 L 320,75 L 410,75 C 418,75 425,82 425,90 L 425,310 C 425,380 340,435 250,465 C 160,435 75,380 75,310 L 75,90 C 75,82 82,75 90,75 Z"
+        fill="#0c2340" filter="url(#dropShadow)" />
+
+  <!-- Orange Inner Shield Border -->
+  <path d="M 98,84 L 185,84 L 200,50 L 300,50 L 315,84 L 402,84 C 408,84 414,90 414,96 L 414,305 C 414,368 335,422 250,450 C 165,422 86,368 86,305 L 86,96 C 86,90 92,84 98,84 Z"
+        fill="url(#orangeBorder)" />
+
+  <!-- Shield White Face -->
+  <path d="M 106,92 L 190,92 L 205,60 L 295,60 L 310,92 L 394,92 C 398,92 403,96 403,101 L 403,300 C 403,355 330,410 250,435 C 170,410 97,355 97,300 L 97,101 C 97,96 102,92 106,92 Z"
+        fill="url(#shieldBg)" stroke="#0c2340" stroke-width="3" />
+
+  <!-- Top 5 Orange Stars -->
+  <g fill="#ea580c">
+    <!-- Star 1 -->
+    <polygon points="205,73 207,78 212,78 208,81 210,86 205,83 200,86 202,81 198,78 203,78" transform="scale(0.8) translate(50, 15)"/>
+    <!-- Star 2 -->
+    <polygon points="225,68 227,73 232,73 228,76 230,81 225,78 220,81 222,76 218,73 223,73" transform="scale(0.85) translate(35, 10)"/>
+    <!-- Center Star (Largest) -->
+    <polygon points="250,60 253,67 260,67 254,71 257,78 250,73 243,78 246,71 240,67 247,67" transform="scale(1.0) translate(0, 0)"/>
+    <!-- Star 4 -->
+    <polygon points="275,68 277,73 282,73 278,76 280,81 275,78 270,81 272,76 268,73 273,73" transform="scale(0.85) translate(-35, 10)"/>
+    <!-- Star 5 -->
+    <polygon points="295,73 297,78 302,78 298,81 300,86 295,83 290,86 292,81 288,78 293,78" transform="scale(0.8) translate(-50, 15)"/>
+  </g>
+
+  <!-- Open Top Arc Line -->
+  <path d="M 215,92 Q 250,78 285,92" fill="none" stroke="#0c2340" stroke-width="2.5" />
+  <path d="M 210,97 Q 250,83 290,97" fill="none" stroke="#0c2340" stroke-width="1.5" />
+
+  <!-- Sunburst Rays behind Pillar -->
+  <g stroke="url(#sunburstGrad)" stroke-width="4" stroke-linecap="round">
+    <line x1="250" y1="210" x2="180" y2="150" />
+    <line x1="250" y1="210" x2="195" y2="135" />
+    <line x1="250" y1="210" x2="220" y2="125" />
+    <line x1="250" y1="210" x2="250" y2="120" />
+    <line x1="250" y1="210" x2="280" y2="125" />
+    <line x1="250" y1="210" x2="305" y2="135" />
+    <line x1="250" y1="210" x2="320" y2="150" />
+  </g>
+
+  <!-- Left Icon: Tree of Knowledge -->
+  <g transform="translate(115, 125)">
+    <path d="M 25,60 L 25,45 C 25,45 10,40 10,25 C 10,12 25,5 25,5 C 25,5 40,12 40,25 C 40,40 25,45 25,45 Z" fill="#0c2340" />
+    <path d="M 23,45 L 15,30 M 27,42 L 35,28 M 25,35 L 20,20 M 25,32 L 30,18" stroke="#ffffff" stroke-width="1.5" />
+    <rect x="23" y="45" width="4" height="15" fill="#0c2340" />
+    <path d="M 12,60 Q 25,56 38,60" stroke="#0c2340" stroke-width="2" fill="none" />
+  </g>
+
+  <!-- Right Icon: Globe of Wisdom -->
+  <g transform="translate(330, 125)">
+    <!-- Stand -->
+    <path d="M 15,58 Q 25,54 35,58 L 35,62 L 15,62 Z" fill="#0c2340" />
+    <rect x="23" y="46" width="4" height="12" fill="#0c2340" />
+    <!-- C-Ring -->
+    <path d="M 10,28 A 18,18 0 1,0 36,40" fill="none" stroke="#0c2340" stroke-width="3" />
+    <!-- Sphere -->
+    <circle cx="25" cy="25" r="14" fill="#0c2340" />
+    <circle cx="25" cy="25" r="12" fill="#ffffff" />
+    <!-- Continents -->
+    <path d="M 17,20 Q 22,17 26,20 Q 31,23 30,28 Q 28,33 22,32 Q 18,30 17,20 Z" fill="#0c2340" />
+    <path d="M 28,16 Q 34,16 35,21 Q 31,23 28,16 Z" fill="#0c2340" />
+  </g>
+
+  <!-- Center Pillar / Column -->
+  <g transform="translate(215, 140)">
+    <!-- Capital -->
+    <rect x="0" y="30" width="70" height="7" rx="3" fill="#0c2340" stroke="#ea580c" stroke-width="1.5" />
+    <!-- Fluted Columns -->
+    <rect x="5" y="37" width="10" height="50" fill="#0c2340" />
+    <rect x="18" y="37" width="10" height="50" fill="#0c2340" />
+    <rect x="31" y="37" width="10" height="50" fill="#0c2340" />
+    <rect x="44" y="37" width="10" height="50" fill="#0c2340" />
+    <rect x="57" y="37" width="10" height="50" fill="#0c2340" />
+    <!-- Highlights on Columns -->
+    <rect x="7" y="37" width="2" height="50" fill="#60a5fa" opacity="0.6"/>
+    <rect x="20" y="37" width="2" height="50" fill="#60a5fa" opacity="0.6"/>
+    <rect x="33" y="37" width="2" height="50" fill="#60a5fa" opacity="0.6"/>
+    <rect x="46" y="37" width="2" height="50" fill="#60a5fa" opacity="0.6"/>
+    <rect x="59" y="37" width="2" height="50" fill="#60a5fa" opacity="0.6"/>
+    <!-- Base -->
+    <rect x="0" y="87" width="70" height="8" rx="2" fill="#0c2340" stroke="#ea580c" stroke-width="1.5" />
+  </g>
+
+  <!-- Graduation Mortarboard Cap (on Pillar) -->
+  <g transform="translate(170, 75)">
+    <!-- Skull Cap Base -->
+    <path d="M 45,45 Q 80,62 115,45 L 115,55 Q 80,72 45,55 Z" fill="#0c2340" />
+    <path d="M 45,50 Q 80,67 115,50" stroke="#ea580c" stroke-width="2" fill="none" />
+    <!-- Diamond Mortarboard Top -->
+    <polygon points="80,15 155,38 80,60 5,38" fill="#0c2340" stroke="#ea580c" stroke-width="3" />
+    <polygon points="80,18 148,38 80,56 12,38" fill="#1e3a8a" />
+    <!-- Center Button & Hanging Tassel -->
+    <circle cx="80" cy="38" r="4" fill="#ea580c" />
+    <path d="M 80,38 Q 120,40 135,55" fill="none" stroke="#ea580c" stroke-width="2" />
+    <polygon points="135,55 132,75 138,75" fill="#ea580c" />
+  </g>
+
+  <!-- Open Book & Fountain Pen -->
+  <g transform="translate(100, 205)">
+    <!-- Book Back Orange Glow -->
+    <path d="M 150,55 Q 80,45 10,75 L 10,95 Q 80,65 150,75 Q 220,65 290,95 L 290,75 Q 220,45 150,55 Z" fill="#ea580c" />
+
+    <!-- Book Pages -->
+    <path d="M 150,58 C 90,48 25,72 15,80 L 15,92 C 25,84 90,60 150,70 C 210,60 275,84 285,92 L 285,80 C 275,72 210,48 150,58 Z" fill="#0c2340" />
+    <path d="M 150,62 C 95,54 35,76 22,82 L 22,90 C 35,84 95,62 150,70 C 205,62 265,84 278,90 L 278,82 C 265,76 205,54 150,62 Z" fill="#ffffff" />
+
+    <!-- Open Book White Fan Lines -->
+    <path d="M 150,64 C 100,56 45,76 30,84 L 30,76 C 45,68 100,48 150,56 C 200,48 255,68 270,76 L 270,84 C 255,76 200,56 150,64 Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" />
+
+    <!-- Fountain Pen -->
+    <g transform="rotate(35 190 40)">
+      <!-- Barrel -->
+      <rect x="180" y="20" width="12" height="45" rx="3" fill="#0c2340" stroke="#ea580c" stroke-width="1.5" />
+      <rect x="180" y="32" width="12" height="4" fill="#ffffff" />
+      <!-- Nib -->
+      <polygon points="180,65 192,65 186,82" fill="#ea580c" />
+      <line x1="186" y1="65" x2="186" y2="78" stroke="#0c2340" stroke-width="1.5" />
+    </g>
+  </g>
+
+  <!-- Large Center Banner: "GRACIA" (White & Gold Banner with Navy Text) -->
+  <g transform="translate(60, 285)" filter="url(#dropShadow)">
+    <!-- Orange Banner Background Trim -->
+    <path d="M 10,25 L 0,0 L 30,5 L 350,5 L 380,0 L 370,25 L 380,80 L 350,75 L 30,75 L 0,80 Z" fill="#ea580c" />
+    <!-- White Inner Banner -->
+    <path d="M 15,22 L 8,8 L 32,10 L 348,10 L 372,8 L 365,22 L 372,70 L 348,68 L 32,68 L 8,70 Z" fill="#ffffff" stroke="#0c2340" stroke-width="3" />
+
+    <!-- Main GRACIA Text -->
+    <text x="190" y="55" font-family="'Arial Black', 'Impact', sans-serif" font-size="44" font-weight="900" text-anchor="middle" fill="#0c2340" letter-spacing="4">
+      GRACIA
+    </text>
+  </g>
+
+  <!-- Middle Sub-Banner: "LEARNING CENTRE" & "- MARIRU -" -->
+  <g transform="translate(70, 360)" filter="url(#dropShadow)">
+    <!-- Blue Sub-Banner Ribbon -->
+    <path d="M 20,5 L 340,5 L 360,28 L 340,50 L 20,50 L 0,28 Z" fill="url(#navyRibbon)" stroke="#ea580c" stroke-width="2" />
+    <text x="180" y="27" font-family="'Arial Black', sans-serif" font-size="16" font-weight="900" text-anchor="middle" fill="#ffffff" letter-spacing="2">
+      LEARNING CENTRE
+    </text>
+    <text x="180" y="43" font-family="'Arial', sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#fdba74" letter-spacing="4">
+      — MARIRU —
+    </text>
+  </g>
+
+  <!-- Small Open Book Accent under Mariru -->
+  <g transform="translate(230, 420)">
+    <path d="M 20,10 Q 10,5 0,8 L 0,14 Q 10,11 20,16 Q 30,11 40,14 L 40,8 Q 30,5 20,10 Z" fill="#0c2340" stroke="#ea580c" stroke-width="1.5" />
+  </g>
+
+  <!-- Bottom Flowing Banner: "— I can! I will! —" -->
+  <g transform="translate(45, 435)" filter="url(#dropShadow)">
+    <!-- Ribbon Ends (Folded Shadow) -->
+    <polygon points="15,40 45,15 45,55" fill="#081430" />
+    <polygon points="395,40 365,15 365,55" fill="#081430" />
+
+    <!-- Ribbon Tail Left -->
+    <path d="M 0,25 L 45,15 L 45,55 L 0,45 L 20,35 Z" fill="#ea580c" stroke="#0c2340" stroke-width="1.5" />
+    <!-- Ribbon Tail Right -->
+    <path d="M 410,25 L 365,15 L 365,55 L 410,45 L 390,35 Z" fill="#ea580c" stroke="#0c2340" stroke-width="1.5" />
+
+    <!-- Main Motto Ribbon Body -->
+    <path d="M 40,20 Q 205,65 370,20 L 365,58 Q 205,103 45,58 Z" fill="url(#navyRibbon)" stroke="#ea580c" stroke-width="3" />
+
+    <!-- Motto Text -->
+    <path id="mottoCurve" d="M 50,48 Q 205,92 360,48" fill="none" />
+    <text font-family="'Georgia', 'Times New Roman', serif" font-size="28" font-weight="bold" font-style="italic" fill="#ffffff" text-anchor="middle">
+      <textPath href="#mottoCurve" startOffset="50%" text-anchor="middle">
+        — I can! I will! —
+      </textPath>
+    </text>
+  </g>
+</svg>

@@ -74,6 +74,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
     dateOfBirth: '2020-04-15',
     desiredClass: 'Grade 1' as GradeLevel,
     birthCertNumber: '',
+    assessmentOrKemis: '',
     upiOrNemis: '',
     parentFullName: '',
     parentPhone: '',
@@ -266,7 +267,8 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
         dateOfBirth: appForm.dateOfBirth,
         desiredClass: appForm.desiredClass,
         birthCertNumber: appForm.birthCertNumber,
-        upiOrNemis: appForm.upiOrNemis,
+        assessmentOrKemis: appForm.assessmentOrKemis || appForm.upiOrNemis,
+        upiOrNemis: appForm.assessmentOrKemis || appForm.upiOrNemis,
         parentFullName: appForm.parentFullName,
         parentPhone: appForm.parentPhone,
         parentEmail: appForm.parentEmail,
@@ -285,6 +287,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
         dateOfBirth: '2020-04-15',
         desiredClass: 'Grade 1',
         birthCertNumber: '',
+        assessmentOrKemis: '',
         upiOrNemis: '',
         parentFullName: '',
         parentPhone: '',
@@ -1147,10 +1150,10 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
               />
             </div>
             <div>
-              <label className="font-semibold text-slate-700">UPI Number or NEMIS</label>
+              <label className="font-semibold text-slate-700">Assessment Number or KEMIS</label>
               <input
                 type="text"
-                placeholder="e.g. UPI-928192 or NEMIS No."
+                placeholder="e.g. Assessment No. or KEMIS No."
                 value={appForm.upiOrNemis}
                 onChange={(e) => setAppForm({ ...appForm, upiOrNemis: e.target.value })}
                 className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
