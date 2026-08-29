@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { userService, CreateUserData } from '../../services/userService';
 import { staffService } from '../../services/staffAndParentService';
 import { authService } from '../../services/authService';
+import { printerService } from '../../services/printerService';
 import { UserProfile, UserRole, Staff } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -37,8 +38,13 @@ import {
   BookOpen,
   Send,
   Eye,
+  EyeOff,
   ExternalLink,
   Filter,
+  Printer,
+  FileText,
+  KeyRound,
+  CheckCircle2,
 } from 'lucide-react';
 
 const ROLE_CONFIGS: Record<
@@ -78,45 +84,62 @@ export const UsersView: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState<boolean>(false);
+  const [isSlipModalOpen, setIsSlipModalOpen] = useState<boolean>(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [slipUser, setSlipUser] = useState<UserProfile | null>(null);
+  const [slipPassword, setSlipPassword] = useState<string>('Password@2026');
 
   // Add User Form State
   const [addForm, setAddForm] = useState<{
     fullName: string;
+    username: string;
     email: string;
     phone: string;
     role: UserRole;
     status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     staffId?: string;
     tempPassword: string;
+    showPassword: boolean;
     sendInvite: boolean;
   }>({
     fullName: '',
+    username: '',
     email: '',
     phone: '',
     role: 'TEACHER',
     status: 'ACTIVE',
     staffId: '',
     tempPassword: 'Glcm@' + Math.floor(1000 + Math.random() * 9000),
+    showPassword: false,
     sendInvite: true,
   });
 
   // Edit User Form State
   const [editForm, setEditForm] = useState<{
     fullName: string;
+    username: string;
     email: string;
     phone: string;
     role: UserRole;
     status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
     staffId?: string;
+    newPassword?: string;
+    showPassword?: boolean;
   }>({
     fullName: '',
+    username: '',
     email: '',
     phone: '',
     role: 'TEACHER',
     status: 'ACTIVE',
     staffId: '',
+    newPassword: '',
+    showPassword: false,
   });
+
+  // Reset Password Modal State
+  const [newCustomPassword, setNewCustomPassword] = useState<string>('Password@2026');
+  const [showResetPassword, setShowResetPassword] = useState<boolean>(false);
 
   const [copiedPassword, setCopiedPassword] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
@@ -156,27 +179,33 @@ export const UsersView: React.FC = () => {
   };
 
   const handleOpenAddModal = (prefillStaff?: Staff) => {
-    handleGeneratePassword();
+    const randomPin = Math.floor(1000 + Math.random() * 9000);
+    const newPass = `Glcm@${randomPin}`;
     if (prefillStaff) {
+      const rawUser = prefillStaff.fullName.toLowerCase().replace(/[^a-z0-9]/g, '.');
       setAddForm({
         fullName: prefillStaff.fullName,
-        email: prefillStaff.email || `${prefillStaff.fullName.toLowerCase().replace(/\s+/g, '.')}@glcm.ac.ke`,
+        username: rawUser,
+        email: prefillStaff.email || `${rawUser}@glcm.ac.ke`,
         phone: prefillStaff.phone || '',
         role: prefillStaff.role || 'TEACHER',
         status: 'ACTIVE',
         staffId: prefillStaff.id,
-        tempPassword: 'Glcm@' + Math.floor(1000 + Math.random() * 9000),
+        tempPassword: newPass,
+        showPassword: true,
         sendInvite: true,
       });
     } else {
       setAddForm({
         fullName: '',
+        username: '',
         email: '',
         phone: '',
         role: 'TEACHER',
         status: 'ACTIVE',
         staffId: '',
-        tempPassword: 'Glcm@' + Math.floor(1000 + Math.random() * 9000),
+        tempPassword: newPass,
+        showPassword: true,
         sendInvite: true,
       });
     }
@@ -185,26 +214,38 @@ export const UsersView: React.FC = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addForm.fullName.trim() || !addForm.email.trim()) {
-      showToast('Please enter full name and email address.', 'warning');
+    if (!addForm.fullName.trim()) {
+      showToast('Please enter full name.', 'warning');
       return;
     }
 
     setActionLoading(true);
     try {
+      const fallbackEmail =
+        addForm.email.trim() ||
+        `${(addForm.username || addForm.fullName).toLowerCase().replace(/[^a-z0-9]/g, '.')}@glcm.ac.ke`;
+
       const created = await userService.createUser({
-        fullName: addForm.fullName,
-        email: addForm.email,
-        phone: addForm.phone || undefined,
+        fullName: addForm.fullName.trim(),
+        username: addForm.username.trim() || undefined,
+        email: fallbackEmail,
+        phone: addForm.phone.trim() || undefined,
         role: addForm.role,
         status: addForm.status,
         schoolId: school?.id,
         staffId: addForm.staffId || undefined,
+        password: addForm.tempPassword,
         tempPassword: addForm.tempPassword,
       });
 
-      showToast(`User account created for ${created.fullName} (${created.role})!`, 'success');
+      showToast(`User login created for ${created.fullName}!`, 'success');
       setIsAddModalOpen(false);
+      
+      // Prompt credential slip
+      setSlipUser(created);
+      setSlipPassword(addForm.tempPassword);
+      setIsSlipModalOpen(true);
+
       await loadData();
     } catch (e: any) {
       showToast('Error creating user account: ' + e.message, 'error');
@@ -217,11 +258,14 @@ export const UsersView: React.FC = () => {
     setSelectedUser(u);
     setEditForm({
       fullName: u.fullName || '',
+      username: u.username || u.email.split('@')[0],
       email: u.email || '',
       phone: u.phone || '',
       role: u.role || 'TEACHER',
       status: u.status || 'ACTIVE',
       staffId: u.staffId || '',
+      newPassword: '',
+      showPassword: false,
     });
     setIsEditModalOpen(true);
   };
@@ -234,12 +278,17 @@ export const UsersView: React.FC = () => {
     try {
       await userService.updateUser(selectedUser.id, {
         fullName: editForm.fullName,
+        username: editForm.username,
         email: editForm.email,
         phone: editForm.phone || undefined,
         role: editForm.role,
         status: editForm.status,
         staffId: editForm.staffId || undefined,
       });
+
+      if (editForm.newPassword?.trim()) {
+        await userService.setUserPassword(selectedUser.id, editForm.newPassword.trim());
+      }
 
       showToast(`User profile for ${editForm.fullName} updated!`, 'success');
       setIsEditModalOpen(false);
@@ -285,23 +334,40 @@ export const UsersView: React.FC = () => {
 
   const handleOpenResetPasswordModal = (u: UserProfile) => {
     setSelectedUser(u);
+    const randomPin = Math.floor(1000 + Math.random() * 9000);
+    setNewCustomPassword(`Glcm@${randomPin}`);
+    setShowResetPassword(true);
     setIsResetPasswordModalOpen(true);
   };
 
-  const handleSendPasswordReset = async () => {
-    if (!selectedUser?.email) return;
+  const handleSaveNewPassword = async () => {
+    if (!selectedUser) return;
+    if (!newCustomPassword.trim()) {
+      showToast('Please enter a new password.', 'warning');
+      return;
+    }
+
     setActionLoading(true);
     try {
-      await authService.resetPassword(selectedUser.email);
-      showToast(`Password reset instructions sent to ${selectedUser.email}!`, 'success');
+      await userService.setUserPassword(selectedUser.id, newCustomPassword.trim());
+      showToast(`Password successfully updated for ${selectedUser.fullName}!`, 'success');
+      
+      // Offer login slip
+      setSlipUser(selectedUser);
+      setSlipPassword(newCustomPassword.trim());
       setIsResetPasswordModalOpen(false);
+      setIsSlipModalOpen(true);
+      await loadData();
     } catch (e: any) {
-      // In demo environment or if user is mock, inform gracefully
-      showToast(`Password reset link generated for ${selectedUser.email}.`, 'info');
-      setIsResetPasswordModalOpen(false);
+      showToast('Error setting password: ' + e.message, 'error');
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handlePrintSlip = (u: UserProfile, pass?: string) => {
+    printerService.printUserCredentialSlip(u, pass || u.plainPasswordForAdmin || 'Password@2026', school);
+    showToast(`Printing login credential slip for ${u.fullName}...`, 'info');
   };
 
   const handleSeedDemoUsers = async () => {
@@ -556,8 +622,11 @@ export const UsersView: React.FC = () => {
                             </div>
                           )}
                           <div>
-                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                               <span>{u.fullName}</span>
+                              <span className="text-[11px] font-mono bg-blue-50 text-blue-900 border border-blue-200/80 px-1.5 py-0.5 rounded-md font-bold">
+                                @{u.username || u.email?.split('@')[0]}
+                              </span>
                               {isCurrentUser && (
                                 <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded-md font-bold">
                                   You
@@ -628,7 +697,7 @@ export const UsersView: React.FC = () => {
 
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1">
                           {/* Switch Role Preview */}
                           <button
                             type="button"
@@ -642,14 +711,24 @@ export const UsersView: React.FC = () => {
                             <ExternalLink className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* Reset Password */}
+                          {/* Print Login Slip */}
                           <button
                             type="button"
-                            title="Reset Credentials / Password"
+                            title="Print Staff Login Credential Slip"
+                            onClick={() => handlePrintSlip(u)}
+                            className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Reset / Set Password */}
+                          <button
+                            type="button"
+                            title="Manage Password / PIN"
                             onClick={() => handleOpenResetPasswordModal(u)}
                             className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                           >
-                            <Key className="w-3.5 h-3.5" />
+                            <KeyRound className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Suspend / Activate Toggle */}
@@ -702,7 +781,7 @@ export const UsersView: React.FC = () => {
           <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-xl flex items-start gap-2.5 text-xs text-blue-900">
             <ShieldCheck className="w-4 h-4 shrink-0 text-blue-900 mt-0.5" />
             <div>
-              <span className="font-bold">Role-Based Access Control:</span> Users will receive credentials with permissions matching their assigned role.
+              <span className="font-bold">Staff & Portal Provisioning:</span> Set up unique login credentials (Username & Password) for school staff, teachers, bursars, and administrators.
             </div>
           </div>
 
@@ -718,11 +797,13 @@ export const UsersView: React.FC = () => {
                   const sId = e.target.value;
                   const found = staffList.find((s) => s.id === sId);
                   if (found) {
+                    const cleanName = found.fullName.toLowerCase().replace(/[^a-z0-9]/g, '.');
                     setAddForm((prev) => ({
                       ...prev,
                       staffId: found.id,
                       fullName: found.fullName,
-                      email: found.email || `${found.fullName.toLowerCase().replace(/\s+/g, '.')}@glcm.ac.ke`,
+                      username: cleanName,
+                      email: found.email || `${cleanName}@glcm.ac.ke`,
                       phone: found.phone || '',
                       role: found.role || 'TEACHER',
                     }));
@@ -752,27 +833,62 @@ export const UsersView: React.FC = () => {
                 required
                 placeholder="e.g. Mwalimu Catherine Mutua"
                 value={addForm.fullName}
-                onChange={(e) => setAddForm({ ...addForm, fullName: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAddForm((prev) => {
+                    const autoUser = !prev.username || prev.username === prev.fullName.toLowerCase().replace(/[^a-z0-9]/g, '.')
+                      ? val.toLowerCase().replace(/[^a-z0-9]/g, '.')
+                      : prev.username;
+                    return {
+                      ...prev,
+                      fullName: val,
+                      username: autoUser,
+                      email: !prev.email || prev.email.includes('@glcm.ac.ke') ? `${autoUser}@glcm.ac.ke` : prev.email,
+                    };
+                  });
+                }}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
               />
             </div>
 
             <div>
               <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
-                Email Address <span className="text-rose-500">*</span>
+                Login Username <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">@</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. catherine.mutua"
+                  value={addForm.username}
+                  onChange={(e) =>
+                    setAddForm({
+                      ...addForm,
+                      username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''),
+                    })
+                  }
+                  className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
+                />
+              </div>
+              <span className="text-[10px] text-slate-400">Used by staff to sign in on public website.</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
+                Email Address
               </label>
               <input
                 type="email"
-                required
                 placeholder="e.g. cmutua@glcm.ac.ke"
                 value={addForm.email}
                 onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Phone Number</label>
               <input
@@ -783,7 +899,9 @@ export const UsersView: React.FC = () => {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
               />
             </div>
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
                 Assigned Role <span className="text-rose-500">*</span>
@@ -800,14 +918,27 @@ export const UsersView: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Account Status</label>
+              <select
+                value={addForm.status}
+                onChange={(e) => setAddForm({ ...addForm, status: e.target.value as any })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900"
+              >
+                <option value="ACTIVE">ACTIVE (Ready to log in)</option>
+                <option value="SUSPENDED">SUSPENDED</option>
+                <option value="INACTIVE">INACTIVE</option>
+              </select>
+            </div>
           </div>
 
-          {/* Temporary Password Box */}
+          {/* Password Box */}
           <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[11px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-blue-900" />
-                Initial Temporary Password
+                Initial Password / PIN <span className="text-rose-500">*</span>
               </label>
               <button
                 type="button"
@@ -815,17 +946,27 @@ export const UsersView: React.FC = () => {
                 className="text-[11px] text-blue-900 hover:underline font-bold flex items-center gap-1 cursor-pointer"
               >
                 <RefreshCw className="w-3 h-3" />
-                Regenerate
+                Generate PIN
               </button>
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={addForm.tempPassword}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
-              />
+              <div className="relative flex-1">
+                <input
+                  type={addForm.showPassword ? 'text' : 'password'}
+                  required
+                  value={addForm.tempPassword}
+                  onChange={(e) => setAddForm({ ...addForm, tempPassword: e.target.value })}
+                  className="w-full pl-3 pr-10 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAddForm((prev) => ({ ...prev, showPassword: !prev.showPassword }))}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                >
+                  {addForm.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -838,24 +979,12 @@ export const UsersView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={addForm.sendInvite}
-                onChange={(e) => setAddForm({ ...addForm, sendInvite: e.target.checked })}
-                className="rounded text-blue-900"
-              />
-              <span>Send welcome invitation and credentials</span>
-            </label>
-          </div>
-
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" loading={actionLoading} icon={<UserPlus className="w-4 h-4" />}>
-              Create User Account
+              Create User & Generate Slip
             </Button>
           </div>
         </form>
@@ -864,15 +993,36 @@ export const UsersView: React.FC = () => {
       {/* MODAL 2: EDIT USER */}
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit User Profile & Role">
         <form onSubmit={handleUpdateUser} className="space-y-4">
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Full Name</label>
-            <input
-              type="text"
-              required
-              value={editForm.fullName}
-              onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Full Name</label>
+              <input
+                type="text"
+                required
+                value={editForm.fullName}
+                onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">Username</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">@</span>
+                <input
+                  type="text"
+                  required
+                  value={editForm.username}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''),
+                    })
+                  }
+                  className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -928,6 +1078,28 @@ export const UsersView: React.FC = () => {
             </div>
           </div>
 
+          <div>
+            <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
+              Update Password (Leave blank to keep existing)
+            </label>
+            <div className="relative">
+              <input
+                type={editForm.showPassword ? 'text' : 'password'}
+                placeholder="Enter new password / PIN"
+                value={editForm.newPassword || ''}
+                onChange={(e) => setEditForm({ ...editForm, newPassword: e.target.value })}
+                className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900"
+              />
+              <button
+                type="button"
+                onClick={() => setEditForm((prev) => ({ ...prev, showPassword: !prev.showPassword }))}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+              >
+                {editForm.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
               Cancel
@@ -939,44 +1111,158 @@ export const UsersView: React.FC = () => {
         </form>
       </Modal>
 
-      {/* MODAL 3: RESET PASSWORD */}
+      {/* MODAL 3: RESET / MANAGE PASSWORD */}
       <Modal
         isOpen={isResetPasswordModalOpen}
         onClose={() => setIsResetPasswordModalOpen(false)}
-        title="Reset User Credentials"
+        title="Change User Password & PIN"
       >
         <div className="space-y-4">
-          <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
-            <Key className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+          <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-xl flex items-start gap-3">
+            <KeyRound className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
             <div className="text-xs text-amber-950">
-              <span className="font-bold">Password Reset Request:</span> You are about to initiate a security credential reset for{' '}
-              <strong className="underline">{selectedUser?.fullName}</strong> ({selectedUser?.email}).
+              <span className="font-bold">Set Password for:</span>{' '}
+              <strong>{selectedUser?.fullName}</strong> (@{selectedUser?.username || selectedUser?.email?.split('@')[0]})
             </div>
           </div>
 
-          <p className="text-xs text-slate-600">
-            An automated recovery email with secure password reset instructions will be dispatched to{' '}
-            <span className="font-mono font-semibold text-slate-800">{selectedUser?.email}</span>.
-          </p>
+          <div>
+            <label className="text-[11px] font-bold text-slate-500 uppercase block mb-1">
+              New Password or Access PIN
+            </label>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showResetPassword ? 'text' : 'password'}
+                  value={newCustomPassword}
+                  onChange={(e) => setNewCustomPassword(e.target.value)}
+                  className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowResetPassword(!showResetPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                >
+                  {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const pin = Math.floor(1000 + Math.random() * 9000);
+                  setNewCustomPassword(`Glcm@${pin}`);
+                }}
+              >
+                Generate PIN
+              </Button>
+            </div>
+          </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-            <Button type="button" variant="outline" onClick={() => setIsResetPasswordModalOpen(false)}>
-              Cancel
-            </Button>
+          <div className="flex justify-between items-center pt-3 border-t border-slate-100">
             <Button
               type="button"
-              variant="primary"
-              onClick={handleSendPasswordReset}
-              loading={actionLoading}
-              icon={<Send className="w-4 h-4" />}
+              variant="outline"
+              size="sm"
+              icon={<Printer className="w-3.5 h-3.5" />}
+              onClick={() => {
+                if (selectedUser) handlePrintSlip(selectedUser, newCustomPassword);
+              }}
             >
-              Send Reset Instructions
+              Print Current Slip
             </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsResetPasswordModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={handleSaveNewPassword}
+                loading={actionLoading}
+                icon={<CheckCircle2 className="w-4 h-4" />}
+              >
+                Set Password & Slip
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>
 
-      {/* MODAL 4: DELETE CONFIRMATION */}
+      {/* MODAL 4: LOGIN SLIP MODAL */}
+      <Modal isOpen={isSlipModalOpen} onClose={() => setIsSlipModalOpen(false)} title="Staff Login Credential Slip">
+        {slipUser && (
+          <div className="space-y-4">
+            <div className="border-2 border-blue-900 rounded-2xl p-4 bg-gradient-to-b from-blue-50/50 to-white shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                <div>
+                  <h4 className="font-extrabold text-blue-900 text-sm">{school?.name || 'Gracia Learning Centre'}</h4>
+                  <p className="text-[10px] text-slate-500">Official Staff Login Credentials</p>
+                </div>
+                <Badge variant="primary" size="sm">
+                  {slipUser.role.replace(/_/g, ' ')}
+                </Badge>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500 font-medium">Employee Name:</span>
+                  <span className="font-bold text-slate-900">{slipUser.fullName}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500 font-medium">Portal Username:</span>
+                  <span className="font-mono font-extrabold text-blue-900 bg-blue-100/70 px-2 py-0.5 rounded">
+                    @{slipUser.username || slipUser.email.split('@')[0]}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500 font-medium">Initial Password:</span>
+                  <span className="font-mono font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                    {slipPassword}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500 font-medium">Portal URL:</span>
+                  <span className="text-blue-900 font-semibold underline">Public Homepage &rarr; Staff Login</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={<Copy className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Portal Login Credentials:\nName: ${slipUser.fullName}\nUsername: @${slipUser.username || slipUser.email.split('@')[0]}\nPassword: ${slipPassword}`
+                  );
+                  showToast('Credentials copied to clipboard!', 'info');
+                }}
+              >
+                Copy Details
+              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsSlipModalOpen(false)}>
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  icon={<Printer className="w-4 h-4" />}
+                  onClick={() => handlePrintSlip(slipUser, slipPassword)}
+                >
+                  Print Official Slip
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* MODAL 5: DELETE CONFIRMATION */}
       <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Delete User Account">
         <div className="space-y-4">
           <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl flex items-start gap-3">
@@ -1000,3 +1286,5 @@ export const UsersView: React.FC = () => {
     </div>
   );
 };
+
+export default UsersView;

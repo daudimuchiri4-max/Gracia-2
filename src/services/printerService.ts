@@ -7,7 +7,7 @@
  * 4. System / Network Print Driver (Formatted 80mm, 58mm, A4, and ID Card layouts via browser/OS driver)
  */
 
-import { School, Payment, Student, ReportCard, FeeStructure } from '../types';
+import { School, Payment, Student, ReportCard, FeeStructure, UserProfile } from '../types';
 
 export type PaperWidth = '80mm' | '58mm' | 'A4';
 
@@ -1358,6 +1358,244 @@ class PrinterService {
       </body>
       </html>
     `;
+  }
+
+  /**
+   * Print Official User Credential & Login Access Slip
+   */
+  public printUserCredentialSlip(
+    user: UserProfile,
+    plainPassword?: string,
+    school?: School | null
+  ): void {
+    const schoolName = school?.name || 'Gracia Learning Centre';
+    const schoolMotto = school?.motto || 'Empowering Future Leaders';
+    const schoolPhone = school?.phone || '+254 700 000 000';
+    const schoolEmail = school?.email || 'admin@school.ac.ke';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Login Credentials - ${user.fullName}</title>
+        <style>
+          @page { size: A5 landscape; margin: 10mm; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            margin: 0;
+            padding: 12px;
+            font-size: 13px;
+            line-height: 1.4;
+          }
+          .slip-container {
+            border: 2px solid #1e3a8a;
+            border-radius: 12px;
+            padding: 18px;
+            position: relative;
+            background: #f8fafc;
+          }
+          .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+          }
+          .brand h1 {
+            margin: 0;
+            font-size: 17px;
+            color: #1e3a8a;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .brand p {
+            margin: 2px 0 0 0;
+            font-size: 11px;
+            color: #64748b;
+            font-style: italic;
+          }
+          .badge {
+            background: #1e3a8a;
+            color: #ffffff;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+          }
+          .details-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+          }
+          .card-box {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px;
+          }
+          .card-box h3 {
+            margin: 0 0 6px 0;
+            font-size: 10px;
+            font-weight: 800;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 4px;
+          }
+          .field {
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+          }
+          .field-label {
+            color: #64748b;
+            font-weight: 600;
+          }
+          .field-value {
+            color: #0f172a;
+            font-weight: 700;
+          }
+          .credential-highlight {
+            background: #eff6ff;
+            border: 1.5px dashed #3b82f6;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+          }
+          .cred-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 3px 0;
+          }
+          .cred-val {
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: 800;
+            color: #1e3a8a;
+            background: #ffffff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid #bfdbfe;
+          }
+          .instructions {
+            font-size: 10.5px;
+            color: #475569;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-bottom: 12px;
+          }
+          .instructions ol {
+            margin: 3px 0 0 0;
+            padding-left: 16px;
+          }
+          .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
+            font-size: 9.5px;
+            color: #64748b;
+          }
+          .sign-box {
+            text-align: center;
+            border-top: 1px solid #94a3b8;
+            padding-top: 3px;
+            width: 130px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="slip-container">
+          <div class="header">
+            <div class="brand">
+              <h1>${schoolName}</h1>
+              <p>${schoolMotto} • Tel: ${schoolPhone}</p>
+            </div>
+            <div class="badge">Official Staff Login Slip</div>
+          </div>
+
+          <div class="details-grid">
+            <div class="card-box">
+              <h3>User Account Details</h3>
+              <div class="field">
+                <span class="field-label">Full Name:</span>
+                <span class="field-value">${user.fullName}</span>
+              </div>
+              <div class="field">
+                <span class="field-label">Assigned Role:</span>
+                <span class="field-value">${user.role.replace(/_/g, ' ')}</span>
+              </div>
+              <div class="field">
+                <span class="field-label">Registered Email:</span>
+                <span class="field-value">${user.email}</span>
+              </div>
+            </div>
+
+            <div class="card-box">
+              <h3>Portal Access Info</h3>
+              <div class="field">
+                <span class="field-label">System Portal:</span>
+                <span class="field-value">Staff & Faculty Portal</span>
+              </div>
+              <div class="field">
+                <span class="field-label">Account Status:</span>
+                <span class="field-value">${user.status || 'ACTIVE'}</span>
+              </div>
+              <div class="field">
+                <span class="field-label">Date Issued:</span>
+                <span class="field-value">${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="credential-highlight">
+            <div class="cred-row">
+              <span style="font-weight: 700; color: #1e3a8a;">Portal Username:</span>
+              <span class="cred-val">${user.username ? `@${user.username}` : user.email}</span>
+            </div>
+            <div class="cred-row" style="margin-top: 4px;">
+              <span style="font-weight: 700; color: #1e3a8a;">Initial Password / PIN:</span>
+              <span class="cred-val">${plainPassword || user.plainPasswordForAdmin || 'Password@2026'}</span>
+            </div>
+          </div>
+
+          <div class="instructions">
+            <strong>Important Security Instructions:</strong>
+            <ol>
+              <li>Navigate to the school website homepage and click <strong>"Staff Login"</strong> in the top header.</li>
+              <li>Type your assigned Username (or email) and Password into the login modal.</li>
+              <li>Keep your password confidential and do not share it with unauthorized persons.</li>
+            </ol>
+          </div>
+
+          <div class="footer">
+            <div>
+              <span>System Generated by ERP Administrator</span><br>
+              <span>Support: ${schoolEmail}</span>
+            </div>
+            <div class="sign-box">
+              <span>Administrator Signature / Stamp</span>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    this.printViaIframe(html, 'A5', `Login-Credentials-${user.fullName}`);
   }
 
   /**

@@ -17,6 +17,9 @@ import { DEFAULT_SCHOOL_ID } from './schoolService';
 export interface CreateUserData {
   fullName: string;
   email: string;
+  username?: string;
+  password?: string;
+  tempPassword?: string;
   phone?: string;
   role: UserRole;
   schoolId?: string;
@@ -25,13 +28,14 @@ export interface CreateUserData {
   parentId?: string;
   studentId?: string;
   avatarUrl?: string;
-  tempPassword?: string;
 }
 
 export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Mwalimu Daudi Muchiri',
     email: 'daudimuchiri4@gmail.com',
+    username: 'daudi.muchiri',
+    password: 'Password@2026',
     phone: '+254 712 345 678',
     role: 'SUPER_ADMIN',
     status: 'ACTIVE',
@@ -40,6 +44,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Dr. Beatrice Wanjiru Njeri',
     email: 'principal@glcm.ac.ke',
+    username: 'principal.wanjiru',
+    password: 'Password@2026',
     phone: '+254 722 100 200',
     role: 'HEADTEACHER',
     status: 'ACTIVE',
@@ -48,6 +54,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Mwalimu George Omondi',
     email: 'deputy@glcm.ac.ke',
+    username: 'deputy.omondi',
+    password: 'Password@2026',
     phone: '+254 733 456 789',
     role: 'DEPUTY_HEADTEACHER',
     status: 'ACTIVE',
@@ -56,6 +64,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Madam Catherine Mutua',
     email: 'cmutua@glcm.ac.ke',
+    username: 'catherine.mutua',
+    password: 'Password@2026',
     phone: '+254 711 987 654',
     role: 'TEACHER',
     status: 'ACTIVE',
@@ -64,6 +74,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Mr. Patrick Kiprop',
     email: 'accounts@glcm.ac.ke',
+    username: 'accounts.patrick',
+    password: 'Password@2026',
     phone: '+254 720 334 455',
     role: 'ACCOUNTANT',
     status: 'ACTIVE',
@@ -72,6 +84,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Faith Chebet',
     email: 'reception@glcm.ac.ke',
+    username: 'reception.faith',
+    password: 'Password@2026',
     phone: '+254 728 556 677',
     role: 'RECEPTIONIST',
     status: 'ACTIVE',
@@ -80,6 +94,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Sister Grace Achieng',
     email: 'clinic@glcm.ac.ke',
+    username: 'nurse.grace',
+    password: 'Password@2026',
     phone: '+254 714 889 900',
     role: 'NURSE',
     status: 'ACTIVE',
@@ -88,6 +104,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Kennedy Maina',
     email: 'transport@glcm.ac.ke',
+    username: 'transport.maina',
+    password: 'Password@2026',
     phone: '+254 725 678 123',
     role: 'TRANSPORT_MANAGER',
     status: 'ACTIVE',
@@ -96,6 +114,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Esther Mwangi (Guardian)',
     email: 'parent.mwangi@gmail.com',
+    username: 'parent.esther',
+    password: 'Password@2026',
     phone: '+254 718 901 234',
     role: 'PARENT',
     status: 'ACTIVE',
@@ -104,6 +124,8 @@ export const SAMPLE_USERS: CreateUserData[] = [
   {
     fullName: 'Ryan Mwangi (Student)',
     email: 'ryan.mwangi@students.glcm.ac.ke',
+    username: 'ryan.mwangi',
+    password: 'Password@2026',
     phone: '+254 718 901 234',
     role: 'STUDENT',
     status: 'ACTIVE',
@@ -112,6 +134,18 @@ export const SAMPLE_USERS: CreateUserData[] = [
 ];
 
 export const userService = {
+  /**
+   * Format and clean a username string (lowercase, replace spaces and special characters with dots/underscores)
+   */
+  cleanUsername(input: string): string {
+    return input
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, '.')
+      .replace(/\.+/g, '.')
+      .replace(/^\.|\.$/g, '');
+  },
+
   /**
    * Fetch all user profiles from Firestore
    */
@@ -150,7 +184,28 @@ export const userService = {
   },
 
   /**
-   * Create a new user profile in Firestore
+   * Find a user profile by username or email or phone
+   */
+  async findUserByIdentifier(identifier: string): Promise<UserProfile | null> {
+    try {
+      const clean = identifier.trim().toLowerCase();
+      const users = await this.getUsers();
+      const match = users.find((u) => {
+        const uEmail = (u.email || '').toLowerCase().trim();
+        const uName = (u.username || '').toLowerCase().trim();
+        const uPhone = (u.phone || '').replace(/[^0-9+]/g, '');
+        const cleanPhone = clean.replace(/[^0-9+]/g, '');
+        return uEmail === clean || uName === clean || (cleanPhone.length >= 7 && uPhone.includes(cleanPhone));
+      });
+      return match || null;
+    } catch (err) {
+      console.error('Error finding user by identifier:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Create a new user profile in Firestore with username and password credentials
    */
   async createUser(data: CreateUserData): Promise<UserProfile> {
     const colRef = collection(db, 'users');
@@ -163,9 +218,24 @@ export const userService = {
       email === 'daudimuchiri4@gmail.com' ||
       email.includes('superadmin');
 
+    // Generate or clean username
+    let username = data.username ? this.cleanUsername(data.username) : '';
+    if (!username) {
+      if (email.includes('@')) {
+        username = this.cleanUsername(email.split('@')[0]);
+      } else {
+        username = this.cleanUsername(data.fullName);
+      }
+    }
+
+    const initialPassword = data.password || data.tempPassword || `Glcm@${Math.floor(1000 + Math.random() * 9000)}`;
+
     const newUser: UserProfile = {
       id,
-      email: email,
+      email: email || `${username}@glcm.ac.ke`,
+      username,
+      plainPasswordForAdmin: initialPassword,
+      passwordHash: initialPassword, // stored for login verification
       fullName: data.fullName.trim(),
       phone: data.phone?.trim() || undefined,
       role: isSuper ? 'SUPER_ADMIN' : data.role,
@@ -176,6 +246,7 @@ export const userService = {
       parentId: data.parentId || undefined,
       studentId: data.studentId || undefined,
       createdAt: new Date().toISOString(),
+      mustChangePassword: false,
     };
 
     await setDoc(newDoc, cleanForFirestore(newUser));
@@ -187,7 +258,22 @@ export const userService = {
    */
   async updateUser(userId: string, updates: Partial<UserProfile>): Promise<void> {
     const docRef = doc(db, 'users', userId);
+    if (updates.username) {
+      updates.username = this.cleanUsername(updates.username);
+    }
     await updateDoc(docRef, cleanForFirestore(updates));
+  },
+
+  /**
+   * Set or reset password for a user
+   */
+  async setUserPassword(userId: string, newPass: string): Promise<void> {
+    const docRef = doc(db, 'users', userId);
+    await updateDoc(docRef, cleanForFirestore({
+      plainPasswordForAdmin: newPass,
+      passwordHash: newPass,
+      mustChangePassword: false,
+    }));
   },
 
   /**

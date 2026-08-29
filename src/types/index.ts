@@ -17,6 +17,9 @@ export type UserRole =
 export interface UserProfile {
   id: string;
   email: string;
+  username?: string; // e.g. "mwalimu.omondi", "catherine.mutua", "accounts", "admin"
+  passwordHash?: string; // stored hashed password or auth token
+  plainPasswordForAdmin?: string; // for admin viewing/printing login credentials slips
   fullName: string;
   phone?: string;
   role: UserRole;
@@ -24,6 +27,8 @@ export interface UserProfile {
   avatarUrl?: string;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   createdAt: string;
+  lastLogin?: string;
+  mustChangePassword?: boolean;
   studentId?: string; // If student
   parentId?: string; // If parent
   staffId?: string; // If teacher/staff

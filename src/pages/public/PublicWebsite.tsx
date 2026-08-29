@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { AuthModal } from '../../components/ui/AuthModal';
+import { StaffLoginModal } from '../../components/ui/StaffLoginModal';
 import {
   GraduationCap,
   Sparkles,
@@ -45,6 +46,9 @@ import {
   UserPlus,
   Percent,
   FileText,
+  Briefcase,
+  KeyRound,
+  Lock,
 } from 'lucide-react';
 
 interface PublicWebsiteProps {
@@ -70,6 +74,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
   const [feeViewMode, setFeeViewMode] = useState<FeeViewMode>('CARDS');
   const [isFeePrintModalOpen, setIsFeePrintModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isStaffLoginModalOpen, setIsStaffLoginModalOpen] = useState(false);
   const [authModalRole, setAuthModalRole] = useState<UserRole>('SCHOOL_ADMIN');
 
   // Slideshow State
@@ -432,17 +437,34 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
             >
               FAQs
             </button>
+            <button
+              type="button"
+              onClick={() => setIsStaffLoginModalOpen(true)}
+              className="text-blue-900 font-extrabold flex items-center gap-1 hover:underline cursor-pointer bg-blue-50 px-2 py-1 rounded-lg border border-blue-200/60"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-blue-900" /> Staff Portal
+            </button>
           </nav>
 
-          {/* Single Google Login Button / Portal Buttons */}
+          {/* Action Buttons: Staff Login & Google / Portal Login */}
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsStaffLoginModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-blue-900 hover:bg-blue-800 text-white text-xs font-bold shadow-xs transition-all cursor-pointer border border-blue-900"
+              title="Staff & Employee Portal Login (Username & Password)"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-amber-300" />
+              <span>Staff Login</span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
                 setAuthModalRole('SCHOOL_ADMIN');
                 setIsAuthModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold shadow-2xs transition-all cursor-pointer"
               title="Sign in with your registered Google Account or credentials"
             >
               <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -463,7 +485,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
                   d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
                 />
               </svg>
-              <span className="truncate max-w-[120px] sm:max-w-none">
+              <span className="truncate max-w-[100px] sm:max-w-none">
                 {user && user.email && user.id !== 'demo-admin-id'
                   ? user.fullName || user.email
                   : 'Portal Sign-In'}
@@ -1223,6 +1245,13 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
               >
                 FAQs
               </button>
+              <button
+                type="button"
+                onClick={() => setIsStaffLoginModalOpen(true)}
+                className="hover:text-amber-300 cursor-pointer font-bold text-amber-400 transition-colors flex items-center gap-1.5"
+              >
+                <Briefcase className="w-3.5 h-3.5" /> Staff Login
+              </button>
             </div>
           </div>
 
@@ -1449,6 +1478,13 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         defaultRole={authModalRole}
+        onSuccess={(role) => onEnterPortal(role)}
+      />
+
+      {/* Staff & Faculty Portal Login Modal */}
+      <StaffLoginModal
+        isOpen={isStaffLoginModalOpen}
+        onClose={() => setIsStaffLoginModalOpen(false)}
         onSuccess={(role) => onEnterPortal(role)}
       />
 

@@ -367,18 +367,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <form onSubmit={handleEmailSignIn} className="space-y-3.5 pt-1">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Email Address:
+                    Username or Email Address:
                   </label>
                   <div className="relative">
                     <input
-                      type="email"
+                      type="text"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g. admin@school.ac.ke or your.email@gmail.com"
+                      placeholder="e.g. mwalimu.omondi or deputy@glcm.ac.ke"
                       required
-                      className="w-full px-3.5 py-2.5 pl-9 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-blue-900 focus:border-transparent"
+                      className="w-full px-3.5 py-2.5 pl-9 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-blue-900 focus:border-transparent font-medium"
                     />
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <UserIcon className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   </div>
                   {email.toLowerCase().endsWith('@gmail.com') && (
                     <p className="mt-1 text-[11px] text-blue-800 bg-blue-50 border border-blue-200/80 rounded-lg p-2 flex items-center justify-between">
@@ -398,19 +398,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Password:
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700">
+                      Password:
+                    </label>
+                    <span className="text-[10px] text-slate-400">Default: Password@2026</span>
+                  </div>
                   <div className="relative">
                     <input
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
+                      placeholder="Enter your assigned password"
                       required
-                      className="w-full px-3.5 py-2.5 pl-9 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-blue-900 focus:border-transparent"
+                      className="w-full px-3.5 py-2.5 pl-9 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-blue-900 focus:border-transparent font-medium"
                     />
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  </div>
+                </div>
+
+                {/* Quick Staff Demo Credential Selector */}
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Quick Demo Credentials (Click to fill):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { name: 'Admin', user: 'daudi.muchiri', role: 'SUPER_ADMIN' as UserRole },
+                      { name: 'Teacher', user: 'catherine.mutua', role: 'TEACHER' as UserRole },
+                      { name: 'Deputy Head', user: 'deputy.omondi', role: 'DEPUTY_HEADTEACHER' as UserRole },
+                      { name: 'Accounts', user: 'accounts.patrick', role: 'ACCOUNTANT' as UserRole },
+                      { name: 'Reception', user: 'reception.faith', role: 'RECEPTIONIST' as UserRole },
+                    ].map((item) => (
+                      <button
+                        key={item.user}
+                        type="button"
+                        onClick={() => {
+                          setEmail(item.user);
+                          setPassword('Password@2026');
+                          setSelectedRole(item.role);
+                        }}
+                        className="px-2 py-1 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-slate-700 text-[10px] font-semibold rounded-lg transition-colors cursor-pointer"
+                      >
+                        {item.name} (@{item.user})
+                      </button>
+                    ))}
                   </div>
                 </div>
 
