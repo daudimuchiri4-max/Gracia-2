@@ -22,6 +22,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ArrowUpRight,
+  KeyRound,
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -121,6 +122,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               onClick={() => onNavigate('ATTENDANCE')}
             >
               Mark Attendance
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white/10 text-white border-white/20 hover:bg-white/20"
+              icon={<KeyRound className="w-4 h-4 text-sky-300" />}
+              onClick={() => onNavigate('USERS')}
+            >
+              User Logins
             </Button>
           </div>
         </div>

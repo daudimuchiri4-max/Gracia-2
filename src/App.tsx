@@ -298,7 +298,7 @@ const MainAppContent: React.FC = () => {
       case 'PARENTS':
         return <ParentsView />;
       case 'STAFF':
-        return <StaffView />;
+        return <StaffView onNavigate={handleNavigate} />;
       case 'ACADEMICS':
         return <AcademicsView />;
       case 'ASSESSMENTS':

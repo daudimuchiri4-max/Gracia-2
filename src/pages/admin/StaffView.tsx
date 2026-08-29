@@ -21,9 +21,15 @@ import {
   CheckCircle2,
   ShieldAlert,
   GraduationCap,
+  KeyRound,
+  Key,
 } from 'lucide-react';
 
-export const StaffView: React.FC = () => {
+interface StaffViewProps {
+  onNavigate?: (view: string) => void;
+}
+
+export const StaffView: React.FC<StaffViewProps> = ({ onNavigate }) => {
   const { school } = useAuth();
   const { showToast } = useToast();
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -235,17 +241,29 @@ export const StaffView: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          icon={<PlusCircle className="w-4 h-4" />}
-          onClick={() => {
-            resetForm();
-            setIsAddModalOpen(true);
-          }}
-        >
-          Add Staff Member
-        </Button>
+        <div className="flex items-center gap-2">
+          {onNavigate && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<KeyRound className="w-4 h-4 text-sky-600" />}
+              onClick={() => onNavigate('USERS')}
+            >
+              User Logins & Accounts
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<PlusCircle className="w-4 h-4" />}
+            onClick={() => {
+              resetForm();
+              setIsAddModalOpen(true);
+            }}
+          >
+            Add Staff Member
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -395,7 +413,19 @@ export const StaffView: React.FC = () => {
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-400 font-mono">ID: {st.staffId}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 font-mono">ID: {st.staffId}</span>
+                    {onNavigate && (
+                      <button
+                        onClick={() => onNavigate('USERS')}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-900 hover:text-blue-700 bg-blue-50/80 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                        title="Manage credentials or reset password for this user"
+                      >
+                        <KeyRound className="w-3 h-3 text-blue-700" />
+                        <span>Logins & Slips</span>
+                      </button>
+                    )}
+                  </div>
                   <button
                     onClick={() => handleToggleSuspend(st)}
                     className={`text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer ${
