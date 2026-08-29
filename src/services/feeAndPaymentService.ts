@@ -460,13 +460,31 @@ export const feeService = {
     const newDoc = doc(colRef);
     const receiptNum = `REC/${new Date().getFullYear()}/${Math.floor(10000 + Math.random() * 90000)}`;
     const now = new Date().toISOString();
+    const amountNum = Number(paymentData.amount) || 0;
+
+    // Fetch student's current information and balance before payment
+    const currentStudent = await studentService.getStudentById(schoolId, paymentData.studentId);
+    
+    // Determine previous balance: if passed in paymentData use it, otherwise use student's current balance
+    const previousBalance = paymentData.previousBalance !== undefined 
+      ? Number(paymentData.previousBalance) 
+      : (currentStudent?.totalBalance !== undefined ? currentStudent.totalBalance : 0);
+    
+    // Determine remaining balance after deducting this payment
+    const remainingBalance = paymentData.remainingBalance !== undefined
+      ? Number(paymentData.remainingBalance)
+      : Math.max(0, previousBalance - amountNum);
 
     const payment: Payment = {
       ...paymentData,
       id: newDoc.id,
       schoolId,
       receiptNumber: receiptNum,
-      amount: Number(paymentData.amount),
+      amount: amountNum,
+      previousBalance,
+      remainingBalance,
+      classLevel: paymentData.classLevel || currentStudent?.currentClass,
+      stream: paymentData.stream || currentStudent?.stream,
       createdAt: now,
     };
 
@@ -494,7 +512,6 @@ export const feeService = {
     }
 
     // Update student's overall outstanding balance
-    const currentStudent = await studentService.getStudentById(schoolId, paymentData.studentId);
     if (currentStudent) {
       const updatedBalance = Math.max(0, (currentStudent.totalBalance || 0) - payment.amount);
       await studentService.updateStudent(schoolId, paymentData.studentId, { totalBalance: updatedBalance });
@@ -525,10 +542,17 @@ export const feeService = {
     const oldInvoiceId = currentPayment.invoiceId;
     const newInvoiceId = updates.invoiceId !== undefined ? updates.invoiceId : oldInvoiceId;
 
+    // Recalculate remaining balance
+    let newRemainingBalance = updates.remainingBalance;
+    if (newRemainingBalance === undefined && currentPayment.previousBalance !== undefined) {
+      newRemainingBalance = Math.max(0, currentPayment.previousBalance - newAmount);
+    }
+
     const updatedPayment: Payment = {
       ...currentPayment,
       ...updates,
       amount: newAmount,
+      ...(newRemainingBalance !== undefined ? { remainingBalance: newRemainingBalance } : {}),
     };
 
     await setDoc(docRef, cleanForFirestore(updatedPayment), { merge: true });

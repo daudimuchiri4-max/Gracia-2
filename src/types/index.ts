@@ -376,9 +376,15 @@ export interface Payment {
   studentId: string;
   studentName: string;
   admissionNumber: string;
+  classLevel?: GradeLevel;
+  stream?: string;
+  term?: 'Term 1' | 'Term 2' | 'Term 3' | string;
+  academicYear?: string;
   parentName?: string;
   parentPhone?: string;
   amount: number;
+  previousBalance?: number; // Fee balance before this payment
+  remainingBalance?: number; // Outstanding fee balance remaining after this payment
   paymentDate: string;
   paymentMethod: 'MPESA' | 'BANK_TRANSFER' | 'CASH' | 'CHEQUE' | 'CARD';
   transactionReference: string; // e.g. "QK8492LKA" (M-Pesa code / Bank slip)

@@ -47,6 +47,8 @@ export interface ThermalReceiptData {
   tax?: number;
   total: number;
   amountPaid?: number;
+  previousBalance?: number;
+  remainingBalance?: number;
   change?: number;
   paymentMethod: 'CASH' | 'MPESA' | 'BANK' | 'CARD' | 'CHEQUE' | 'BANK_TRANSFER';
   transactionReference?: string;
@@ -364,8 +366,17 @@ class PrinterService {
     if (data.transactionReference) {
       appendLine(padRow('Txn Ref / M-Pesa:', data.transactionReference));
     }
+    if (data.previousBalance !== undefined) {
+      appendLine(padRow('Previous Balance:', `${school?.currencySymbol || 'KSh'} ${data.previousBalance.toLocaleString()}`));
+    }
     if (data.amountPaid !== undefined) {
       appendLine(padRow('Amount Paid:', `${school?.currencySymbol || 'KSh'} ${data.amountPaid.toLocaleString()}`));
+    }
+    if (data.remainingBalance !== undefined) {
+      const balStr = data.remainingBalance === 0 ? 'KSh 0 (CLEARED)' : `${school?.currencySymbol || 'KSh'} ${data.remainingBalance.toLocaleString()}`;
+      appendBytes(ESC, 0x45, 1);
+      appendLine(padRow('NEW BALANCE DUE:', balStr));
+      appendBytes(ESC, 0x45, 0);
     }
     if (data.change !== undefined) {
       appendLine(padRow('Change Given:', `${school?.currencySymbol || 'KSh'} ${data.change.toLocaleString()}`));
@@ -429,6 +440,18 @@ class PrinterService {
   public printFeeReceipt(payment: Payment, school: School | null, format?: '80mm' | '58mm' | 'A4'): void {
     const targetFormat = format || this.config.paperWidth;
 
+    const prevBal = payment.previousBalance !== undefined
+      ? payment.previousBalance
+      : payment.remainingBalance !== undefined
+      ? payment.remainingBalance + payment.amount
+      : undefined;
+
+    const remBal = payment.remainingBalance !== undefined
+      ? payment.remainingBalance
+      : payment.previousBalance !== undefined
+      ? Math.max(0, payment.previousBalance - payment.amount)
+      : undefined;
+
     if (targetFormat === '80mm' || targetFormat === '58mm') {
       const thermalData: ThermalReceiptData = {
         receiptNumber: payment.receiptNumber,
@@ -448,6 +471,9 @@ class PrinterService {
         ],
         subtotal: payment.amount,
         total: payment.amount,
+        amountPaid: payment.amount,
+        previousBalance: prevBal,
+        remainingBalance: remBal,
         paymentMethod: payment.paymentMethod,
         transactionReference: payment.transactionReference,
         notes: payment.notes,
@@ -736,12 +762,13 @@ class PrinterService {
 
         <div class="divider"></div>
         <div class="row total-box">
-          <span>TOTAL:</span>
+          <span>AMOUNT PAID:</span>
           <span>${school?.currencySymbol || 'KSh'} ${data.total.toLocaleString()}</span>
         </div>
         <div class="row"><span>Payment Mode:</span><span class="font-bold">${data.paymentMethod}</span></div>
         ${data.transactionReference ? `<div class="row"><span>Reference:</span><span>${data.transactionReference}</span></div>` : ''}
-        ${data.amountPaid ? `<div class="row"><span>Amount Paid:</span><span>${school?.currencySymbol || 'KSh'} ${data.amountPaid.toLocaleString()}</span></div>` : ''}
+        ${data.previousBalance !== undefined ? `<div class="row"><span>Previous Bal:</span><span>${school?.currencySymbol || 'KSh'} ${data.previousBalance.toLocaleString()}</span></div>` : ''}
+        ${data.remainingBalance !== undefined ? `<div class="row font-bold" style="font-size: ${is58 ? '11px' : '13px'}; border-top: 1px dashed #000; padding-top: 3px; margin-top: 3px;"><span>BALANCE DUE:</span><span>${data.remainingBalance === 0 ? 'KSh 0 (CLEARED)' : `${school?.currencySymbol || 'KSh'} ${data.remainingBalance.toLocaleString()}`}</span></div>` : ''}
         ${data.change ? `<div class="row"><span>Change:</span><span>${school?.currencySymbol || 'KSh'} ${data.change.toLocaleString()}</span></div>` : ''}
 
         <div class="divider"></div>
@@ -761,6 +788,20 @@ class PrinterService {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const baseTag = origin ? `<base href="${origin}/">` : '';
 
+    const prevBalance = payment.previousBalance !== undefined
+      ? payment.previousBalance
+      : payment.remainingBalance !== undefined
+      ? payment.remainingBalance + payment.amount
+      : undefined;
+
+    const remBalance = payment.remainingBalance !== undefined
+      ? payment.remainingBalance
+      : payment.previousBalance !== undefined
+      ? Math.max(0, payment.previousBalance - payment.amount)
+      : 0;
+
+    const isCleared = remBalance === 0;
+
     return `
       <!DOCTYPE html>
       <html>
@@ -776,12 +817,25 @@ class PrinterService {
           .school-name { font-size: 22px; font-weight: 900; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px; }
           .school-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
           .badge { display: inline-block; background: #0f172a; color: #fff; padding: 4px 12px; font-size: 12px; font-weight: bold; border-radius: 4px; text-transform: uppercase; }
-          .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
-          .meta-item label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; display: block; }
-          .meta-item span { font-size: 14px; font-weight: 700; color: #0f172a; }
-          .amount-box { background: #ecfdf5; border: 1px solid #a7f3d0; padding: 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-          .amount-val { font-size: 26px; font-weight: 900; color: #065f46; font-family: monospace; }
-          .footer-section { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+          .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f8fafc; padding: 14px 16px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
+          .meta-item label { font-size: 10.5px; font-weight: 600; color: #64748b; text-transform: uppercase; display: block; }
+          .meta-item span { font-size: 13.5px; font-weight: 700; color: #0f172a; }
+          
+          .ledger-container { border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; margin-bottom: 25px; }
+          .ledger-header { background: #0f172a; color: #fff; padding: 8px 16px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
+          .ledger-status-cleared { background: #15803d; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+          .ledger-status-due { background: #b45309; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+          
+          .ledger-table { width: 100%; border-collapse: collapse; text-align: left; }
+          .ledger-table th { background: #f1f5f9; padding: 10px 14px; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #475569; border-bottom: 1px solid #cbd5e1; }
+          .ledger-table td { padding: 14px; border-bottom: 1px solid #e2e8f0; }
+          
+          .financial-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 25px; }
+          .f-card { padding: 12px 14px; border-radius: 8px; border: 1px solid #e2e8f0; }
+          .f-card-label { font-size: 10px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+          .f-card-val { font-size: 18px; font-weight: 900; font-family: monospace; }
+          
+          .footer-section { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 35px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
           .stamp-box { border: 2px dashed #94a3b8; width: 140px; height: 70px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; font-weight: bold; text-align: center; text-transform: uppercase; }
         </style>
       </head>
@@ -810,12 +864,70 @@ class PrinterService {
           <div class="meta-item"><label>Payment Mode</label><span>${payment.paymentMethod} ${payment.transactionReference ? `[Ref: ${payment.transactionReference}]` : ''}</span></div>
         </div>
 
-        <div class="amount-box">
-          <div>
-            <div style="font-size: 12px; font-weight: bold; color: #065f46; text-transform: uppercase;">Amount Paid</div>
-            <div style="font-size: 12px; color: #047857; margin-top: 2px;">${payment.notes || 'School Fee Installment & CBC Learning Program'}</div>
+        <!-- Financial Summary Cards -->
+        <div class="financial-cards">
+          <div class="f-card" style="background: #f8fafc; border-color: #cbd5e1;">
+            <div class="f-card-label" style="color: #64748b;">Previous Balance</div>
+            <div class="f-card-val" style="color: #334155;">
+              ${prevBalance !== undefined ? `${school?.currencySymbol || 'KSh'} ${prevBalance.toLocaleString()}` : '-'}
+            </div>
+            <span style="font-size: 10px; color: #94a3b8;">Prior to this transaction</span>
           </div>
-          <div class="amount-val">${school?.currencySymbol || 'KSh'} ${payment.amount.toLocaleString()}</div>
+          
+          <div class="f-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+            <div class="f-card-label" style="color: #065f46;">Amount Paid (Received)</div>
+            <div class="f-card-val" style="color: #047857;">
+              ${school?.currencySymbol || 'KSh'} ${payment.amount.toLocaleString()}
+            </div>
+            <span style="font-size: 10px; color: #059669;">Credited to Student Account</span>
+          </div>
+
+          <div class="f-card" style="background: ${isCleared ? '#f0fdf4' : '#fffbeb'}; border-color: ${isCleared ? '#86efac' : '#fde68a'};">
+            <div class="f-card-label" style="color: ${isCleared ? '#15803d' : '#92400e'};">Remaining Balance Due</div>
+            <div class="f-card-val" style="color: ${isCleared ? '#166534' : '#b45309'};">
+              ${isCleared ? 'KSh 0.00 (NIL)' : `${school?.currencySymbol || 'KSh'} ${remBalance.toLocaleString()}`}
+            </div>
+            <span style="font-size: 10px; color: ${isCleared ? '#15803d' : '#b45309'}; font-weight: bold;">
+              ${isCleared ? '✓ Account Fully Cleared' : 'Outstanding Balance Pending'}
+            </span>
+          </div>
+        </div>
+
+        <!-- Fee Ledger Details -->
+        <div class="ledger-container">
+          <div class="ledger-header">
+            <span>Transaction & Fee Allocation Breakdown</span>
+            <span class="${isCleared ? 'ledger-status-cleared' : 'ledger-status-due'}">
+              ${isCleared ? 'NIL BALANCE / FULLY CLEARED' : 'PENDING BALANCE'}
+            </span>
+          </div>
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>Description / Purpose</th>
+                <th style="text-align: right;">Total Amount</th>
+                <th style="text-align: right;">Amount Paid</th>
+                <th style="text-align: right;">Net Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <strong style="color: #0f172a; display: block;">${payment.notes || 'School Fee Installment & CBC Learning Program'}</strong>
+                  <span style="font-size: 11px; color: #64748b;">Ref: ${payment.transactionReference || 'Direct'} • Mode: ${payment.paymentMethod}</span>
+                </td>
+                <td style="text-align: right; font-family: monospace; font-size: 13px; font-weight: 600; color: #475569;">
+                  ${prevBalance !== undefined ? `${school?.currencySymbol || 'KSh'} ${prevBalance.toLocaleString()}` : `${school?.currencySymbol || 'KSh'} ${payment.amount.toLocaleString()}`}
+                </td>
+                <td style="text-align: right; font-family: monospace; font-size: 14px; font-weight: bold; color: #047857; background: #f0fdf4;">
+                  ${school?.currencySymbol || 'KSh'} ${payment.amount.toLocaleString()}
+                </td>
+                <td style="text-align: right; font-family: monospace; font-size: 14px; font-weight: bold; ${isCleared ? 'color: #15803d;' : 'color: #b45309;'}">
+                  ${isCleared ? 'KSh 0.00' : `${school?.currencySymbol || 'KSh'} ${remBalance.toLocaleString()}`}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div class="footer-section">

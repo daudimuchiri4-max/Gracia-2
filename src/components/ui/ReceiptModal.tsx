@@ -93,14 +93,111 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </div>
         </div>
 
-        {/* Payment Amount Box */}
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-          <div>
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Amount Paid</span>
-            <p className="text-xs text-slate-500">{payment.notes || 'School Fee Installment'}</p>
+        {/* Financial Summary & Balance Reconciliation Box */}
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+            {/* Amount Paid */}
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">
+                  Amount Paid (Credited)
+                </span>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  Received
+                </span>
+              </div>
+              <div className="text-2xl font-black text-emerald-950 mt-1 font-mono">
+                {school?.currencySymbol || 'KSh'} {payment.amount.toLocaleString()}
+              </div>
+              <p className="text-[11px] text-emerald-800/80 mt-0.5">
+                {payment.notes || 'School Fee Installment & CBC Learning Materials'}
+              </p>
+            </div>
+
+            {/* Remaining Balance */}
+            <div
+              className={`rounded-xl p-3.5 border ${
+                (payment.remainingBalance ?? 0) === 0
+                  ? 'bg-blue-50/70 border-blue-200'
+                  : 'bg-amber-50/80 border-amber-200'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className={`text-[11px] font-bold uppercase tracking-wider ${
+                    (payment.remainingBalance ?? 0) === 0 ? 'text-blue-900' : 'text-amber-900'
+                  }`}
+                >
+                  Outstanding Fee Balance
+                </span>
+                {(payment.remainingBalance ?? 0) === 0 ? (
+                  <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> Fully Cleared
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                    Balance Due
+                  </span>
+                )}
+              </div>
+              <div
+                className={`text-2xl font-black mt-1 font-mono ${
+                  (payment.remainingBalance ?? 0) === 0 ? 'text-slate-900' : 'text-amber-950'
+                }`}
+              >
+                {school?.currencySymbol || 'KSh'}{' '}
+                {(
+                  payment.remainingBalance !== undefined
+                    ? payment.remainingBalance
+                    : payment.previousBalance !== undefined
+                    ? Math.max(0, payment.previousBalance - payment.amount)
+                    : 0
+                ).toLocaleString()}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {payment.previousBalance !== undefined
+                  ? `Previous Balance: ${school?.currencySymbol || 'KSh'} ${payment.previousBalance.toLocaleString()}`
+                  : 'Current Ledger Balance'}
+              </p>
+            </div>
           </div>
-          <div className="text-2xl font-black text-slate-900">
-            {school?.currencySymbol || 'KSh'} {payment.amount.toLocaleString()}
+
+          {/* Quick Ledger Breakdown Strip */}
+          <div className="pt-2 border-t border-slate-200/80 grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="bg-white p-2 rounded-lg border border-slate-200">
+              <span className="text-[10px] text-slate-500 font-bold block uppercase">Previous Balance</span>
+              <span className="font-bold text-slate-800">
+                {school?.currencySymbol || 'KSh'}{' '}
+                {(
+                  payment.previousBalance !== undefined
+                    ? payment.previousBalance
+                    : (payment.remainingBalance ?? 0) + payment.amount
+                ).toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-white p-2 rounded-lg border border-emerald-200">
+              <span className="text-[10px] text-emerald-700 font-bold block uppercase">Amount Paid</span>
+              <span className="font-extrabold text-emerald-800">
+                - {school?.currencySymbol || 'KSh'} {payment.amount.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-white p-2 rounded-lg border border-slate-200">
+              <span className="text-[10px] text-slate-500 font-bold block uppercase">New Balance Due</span>
+              <span
+                className={`font-black ${
+                  (payment.remainingBalance ?? 0) === 0 ? 'text-emerald-700' : 'text-amber-900'
+                }`}
+              >
+                {school?.currencySymbol || 'KSh'}{' '}
+                {(
+                  payment.remainingBalance !== undefined
+                    ? payment.remainingBalance
+                    : payment.previousBalance !== undefined
+                    ? Math.max(0, payment.previousBalance - payment.amount)
+                    : 0
+                ).toLocaleString()}
+              </span>
+            </div>
           </div>
         </div>
 
