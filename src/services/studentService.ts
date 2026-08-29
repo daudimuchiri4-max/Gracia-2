@@ -64,7 +64,37 @@ export const studentService = {
   },
 
   /**
-   * Computes the next zero-padded admission number given existing student records.
+   * Find student by admission number (case-insensitive)
+   */
+  async getStudentByAdmissionNumber(
+    schoolId: string,
+    admissionNumber: string,
+    excludeStudentId?: string
+  ): Promise<Student | null> {
+    if (!admissionNumber || !admissionNumber.trim()) return null;
+    const cleanAdm = admissionNumber.trim().toUpperCase();
+    const students = await this.getStudents(schoolId);
+    const match = students.find((s) => {
+      if (excludeStudentId && s.id === excludeStudentId) return false;
+      return s.admissionNumber?.trim().toUpperCase() === cleanAdm;
+    });
+    return match || null;
+  },
+
+  /**
+   * Check if an admission number already exists in the school
+   */
+  async isAdmissionNumberRegistered(
+    schoolId: string,
+    admissionNumber: string,
+    excludeStudentId?: string
+  ): Promise<boolean> {
+    const found = await this.getStudentByAdmissionNumber(schoolId, admissionNumber, excludeStudentId);
+    return Boolean(found);
+  },
+
+  /**
+   * Computes the next available zero-padded admission number given existing student records.
    * Format: GLC/2026/001, GLC/2026/002, etc.
    */
   formatNextAdmissionNumber(
@@ -77,6 +107,8 @@ export const studentService = {
     const cleanYear = (academicYear || '2026').trim();
     const targetPrefix = `${cleanPrefix}/${cleanYear}/`;
 
+    const usedSeqs = new Set<number>();
+
     for (const s of existingStudents) {
       if (!s.admissionNumber) continue;
       const adm = s.admissionNumber.trim().toUpperCase();
@@ -84,22 +116,33 @@ export const studentService = {
       if (adm.startsWith(targetPrefix)) {
         const numPart = adm.substring(targetPrefix.length);
         const parsed = parseInt(numPart, 10);
-        if (!isNaN(parsed) && parsed > maxSeq) {
-          maxSeq = parsed;
+        if (!isNaN(parsed)) {
+          usedSeqs.add(parsed);
+          if (parsed > maxSeq) {
+            maxSeq = parsed;
+          }
         }
       } else {
         // Also check regex pattern for matching year and sequence number
         const match = adm.match(new RegExp(`^(?:${cleanPrefix}|[A-Z0-9_-]+)\\/${cleanYear}\\/(\\d+)`, 'i'));
         if (match && match[1]) {
           const parsed = parseInt(match[1], 10);
-          if (!isNaN(parsed) && parsed > maxSeq) {
-            maxSeq = parsed;
+          if (!isNaN(parsed)) {
+            usedSeqs.add(parsed);
+            if (parsed > maxSeq) {
+              maxSeq = parsed;
+            }
           }
         }
       }
     }
 
-    const nextSeq = maxSeq + 1;
+    let nextSeq = maxSeq + 1;
+    // Ensure we don't pick an already used number if there was a gap
+    while (usedSeqs.has(nextSeq)) {
+      nextSeq++;
+    }
+
     const padded = String(nextSeq).padStart(3, '0');
     return `${cleanPrefix}/${cleanYear}/${padded}`;
   },
@@ -128,6 +171,14 @@ export const studentService = {
       admNumber = await this.generateNextAdmissionNumber(schoolId, 'GLC', '2026');
     }
 
+    // STRICT UNIQUE ADMISSION NUMBER CHECK
+    const existingStudent = await this.getStudentByAdmissionNumber(schoolId, admNumber);
+    if (existingStudent) {
+      throw new Error(
+        `Admission number "${admNumber}" is already registered to learner "${existingStudent.fullName}" (${existingStudent.currentClass} • ${existingStudent.stream}). Please use a unique admission number.`
+      );
+    }
+
     const newStudent: Student = {
       ...studentData,
       id: newDoc.id,
@@ -148,6 +199,19 @@ export const studentService = {
     const docRef = doc(db, 'schools', schoolId, 'students', studentId);
     const now = new Date().toISOString();
     const cleanUpdates = { ...updates, updatedAt: now };
+
+    // If updating admission number, ensure no other student has it
+    if (updates.admissionNumber && updates.admissionNumber.trim()) {
+      const trimmedAdm = updates.admissionNumber.trim();
+      const duplicateStudent = await this.getStudentByAdmissionNumber(schoolId, trimmedAdm, studentId);
+      if (duplicateStudent) {
+        throw new Error(
+          `Admission number "${trimmedAdm}" is already assigned to another learner ("${duplicateStudent.fullName}", ${duplicateStudent.currentClass}). Cannot use duplicate admission number.`
+        );
+      }
+      cleanUpdates.admissionNumber = trimmedAdm;
+    }
+
     if (updates.firstName || updates.lastName) {
       // Recompute full name if parts changed
       const current = await this.getStudentById(schoolId, studentId);
@@ -165,6 +229,9 @@ export const studentService = {
     await this.updateStudent(schoolId, studentId, { status: newStatus });
   },
 
+  /**
+   * Permanently delete a student record from the school directory
+   */
   async deleteStudent(schoolId: string, studentId: string): Promise<void> {
     const docRef = doc(db, 'schools', schoolId, 'students', studentId);
     await deleteDoc(docRef);

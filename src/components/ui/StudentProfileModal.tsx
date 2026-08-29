@@ -26,6 +26,7 @@ import {
   Sparkles,
   ExternalLink,
   MessageSquare,
+  Trash2,
 } from 'lucide-react';
 import { Student, School, Invoice, Payment, ReportCard, CBCRating } from '../../types';
 import { feeService } from '../../services/feeAndPaymentService';
@@ -39,6 +40,7 @@ interface StudentProfileModalProps {
   student: Student | null;
   school: School | null;
   onEdit?: (student: Student) => void;
+  onDelete?: (student: Student) => void;
   onRecordPayment?: (student: Student) => void;
 }
 
@@ -48,6 +50,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   student,
   school,
   onEdit,
+  onDelete,
   onRecordPayment,
 }) => {
   const [activeTab, setActiveTab] = useState<'bio' | 'academics' | 'fees' | 'attendance' | 'health' | 'idcard'>('bio');
@@ -202,6 +205,16 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                     className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer"
                   >
                     Edit Bio
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    onClick={() => onDelete(student)}
+                    className="px-2.5 py-1 bg-rose-600/80 hover:bg-rose-600 text-white font-semibold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                    title="Delete Student"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete
                   </button>
                 )}
               </div>

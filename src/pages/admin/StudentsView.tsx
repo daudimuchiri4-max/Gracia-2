@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { studentService } from '../../services/studentService';
 import { operationsService } from '../../services/operationsService';
+import { auditService } from '../../services/auditService';
 import { Student, GradeLevel, TransportRoute } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -24,6 +25,10 @@ import {
   ArrowRight,
   Shield,
   FileSpreadsheet,
+  Archive,
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle,
 } from 'lucide-react';
 
 const GRADE_LEVELS: GradeLevel[] = [
@@ -42,7 +47,7 @@ const GRADE_LEVELS: GradeLevel[] = [
 ];
 
 export const StudentsView: React.FC = () => {
-  const { school } = useAuth();
+  const { school, user } = useAuth();
   const { showToast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [routes, setRoutes] = useState<TransportRoute[]>([]);
@@ -57,6 +62,11 @@ export const StudentsView: React.FC = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState<boolean>(false);
   const [isPromoteModalOpen, setIsPromoteModalOpen] = useState<boolean>(false);
   const [targetPromotionClass, setTargetPromotionClass] = useState<GradeLevel>('Grade 7');
+
+  // Delete Modal state
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // Form State for Add / Edit
   const [formData, setFormData] = useState({
@@ -111,6 +121,15 @@ export const StudentsView: React.FC = () => {
     }
   };
 
+  // Check for duplicate admission number in real-time
+  const duplicateAdmissionStudent = formData.admissionNumber.trim()
+    ? students.find(
+        (s) =>
+          s.id !== selectedStudent?.id &&
+          s.admissionNumber?.trim().toUpperCase() === formData.admissionNumber.trim().toUpperCase()
+      )
+    : null;
+
   const handleSaveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.firstName || !formData.lastName || !formData.admissionNumber) {
@@ -118,24 +137,56 @@ export const StudentsView: React.FC = () => {
       return;
     }
 
+    const cleanAdm = formData.admissionNumber.trim();
+    const existingDuplicate = students.find(
+      (s) => s.id !== selectedStudent?.id && s.admissionNumber?.trim().toUpperCase() === cleanAdm.toUpperCase()
+    );
+
+    if (existingDuplicate) {
+      showToast(
+        `Admission number "${cleanAdm}" is already registered to ${existingDuplicate.fullName} (${existingDuplicate.currentClass}). Please enter a unique admission number.`,
+        'error'
+      );
+      return;
+    }
+
     try {
       const route = routes.find((r) => r.id === formData.transportRouteId);
       const payload = {
         ...formData,
+        admissionNumber: cleanAdm,
         assessmentNumber: formData.assessmentNumber || formData.upiNumber || '',
         kemisNumber: formData.kemisNumber || formData.nemisNumber || '',
         upiNumber: formData.assessmentNumber || formData.upiNumber || '',
         nemisNumber: formData.kemisNumber || formData.nemisNumber || '',
         fullName: `${formData.firstName} ${formData.middleName || ''} ${formData.lastName}`.replace(/\s+/g, ' ').trim(),
         transportRouteName: route?.routeName || '',
-        totalBalance: 0,
+        totalBalance: selectedStudent ? selectedStudent.totalBalance : 0,
       };
 
       if (selectedStudent) {
         await studentService.updateStudent(school!.id, selectedStudent.id, payload);
+        if (user) {
+          await auditService.logAction(
+            school!.id,
+            { id: user.id, name: user.name, role: user.role },
+            'UPDATE_STUDENT',
+            'STUDENTS',
+            `Updated profile for student ${payload.fullName} (Adm: ${cleanAdm})`
+          );
+        }
         showToast(`Student ${payload.fullName} updated successfully!`, 'success');
       } else {
         await studentService.createStudent(school!.id, payload);
+        if (user) {
+          await auditService.logAction(
+            school!.id,
+            { id: user.id, name: user.name, role: user.role },
+            'REGISTER_STUDENT',
+            'STUDENTS',
+            `Registered new student ${payload.fullName} (Adm: ${cleanAdm}, Class: ${payload.currentClass})`
+          );
+        }
         showToast(`Student ${payload.fullName} registered successfully!`, 'success');
       }
 
@@ -147,14 +198,59 @@ export const StudentsView: React.FC = () => {
     }
   };
 
+  const handleOpenDeleteModal = (student: Student) => {
+    setStudentToDelete(student);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteStudent = async () => {
+    if (!studentToDelete || !school?.id) return;
+    setIsDeleting(true);
+    try {
+      await studentService.deleteStudent(school.id, studentToDelete.id);
+      if (user) {
+        await auditService.logAction(
+          school.id,
+          { id: user.id, name: user.name, role: user.role },
+          'DELETE_STUDENT',
+          'STUDENTS',
+          `Permanently deleted learner ${studentToDelete.fullName} (Adm: ${studentToDelete.admissionNumber}, Class: ${studentToDelete.currentClass})`
+        );
+      }
+      showToast(`Student ${studentToDelete.fullName} (Adm: ${studentToDelete.admissionNumber}) has been permanently deleted.`, 'success');
+      setIsDeleteModalOpen(false);
+      if (isViewModalOpen && selectedStudent?.id === studentToDelete.id) {
+        setIsViewModalOpen(false);
+        setSelectedStudent(null);
+      }
+      setStudentToDelete(null);
+      await loadStudents();
+    } catch (e: any) {
+      showToast('Error deleting student: ' + e.message, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const handleArchive = async (student: Student) => {
-    if (confirm(`Archive student ${student.fullName}?`)) {
+    const nextStatus = student.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const actionName = nextStatus === 'INACTIVE' ? 'Archive' : 'Reactivate';
+    if (confirm(`${actionName} student ${student.fullName} (Adm: ${student.admissionNumber})?`)) {
       try {
-        await studentService.archiveStudent(school!.id, student.id, 'INACTIVE');
-        showToast('Student archived', 'info');
+        await studentService.archiveStudent(school!.id, student.id, nextStatus);
+        if (user) {
+          await auditService.logAction(
+            school!.id,
+            { id: user.id, name: user.name, role: user.role },
+            'STATUS_CHANGE',
+            'STUDENTS',
+            `Changed status of student ${student.fullName} (Adm: ${student.admissionNumber}) to ${nextStatus}`
+          );
+        }
+        showToast(`Student status changed to ${nextStatus}`, 'info');
         await loadStudents();
       } catch (e: any) {
-        showToast('Error archiving: ' + e.message, 'error');
+        showToast('Error changing student status: ' + e.message, 'error');
       }
     }
   };
@@ -445,14 +541,25 @@ export const StudentsView: React.FC = () => {
                           setIsAddModalOpen(true);
                         }}
                         className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                        title="Edit Student"
+                        title="Edit Student Profile"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleArchive(std)}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                          std.status === 'ACTIVE'
+                            ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
+                            : 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+                        }`}
+                        title={std.status === 'ACTIVE' ? 'Archive / Deactivate Student' : 'Reactivate Student'}
+                      >
+                        <Archive className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleOpenDeleteModal(std)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Archive"
+                        title="Delete Student Permanently"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -476,15 +583,53 @@ export const StudentsView: React.FC = () => {
         <form onSubmit={handleSaveStudent} className="space-y-4 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="font-semibold text-slate-700">Admission No *</label>
+              <div className="flex items-center justify-between">
+                <label className="font-semibold text-slate-700">Admission No *</label>
+                {!selectedStudent && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!school?.id) return;
+                      const next = await studentService.generateNextAdmissionNumber(
+                        school.id,
+                        school.code || 'GLC',
+                        school.academicYear || '2026'
+                      );
+                      setFormData((prev) => ({ ...prev, admissionNumber: next }));
+                    }}
+                    className="text-[10px] text-blue-700 hover:underline font-semibold cursor-pointer"
+                  >
+                    Auto-Generate
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 required
                 placeholder="e.g. GLCM/2026/001"
                 value={formData.admissionNumber}
                 onChange={(e) => setFormData({ ...formData, admissionNumber: e.target.value })}
-                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-800"
+                className={`w-full mt-1 px-3 py-2 border rounded-xl focus:ring-2 ${
+                  duplicateAdmissionStudent
+                    ? 'border-rose-400 bg-rose-50/50 text-rose-900 focus:ring-rose-400'
+                    : 'border-slate-200 focus:ring-blue-800'
+                }`}
               />
+              {duplicateAdmissionStudent && (
+                <div className="mt-1 flex items-start gap-1 text-[11px] text-rose-600 font-medium">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    Already assigned to <strong>{duplicateAdmissionStudent.fullName}</strong> (
+                    {duplicateAdmissionStudent.currentClass})
+                  </span>
+                </div>
+              )}
+              {!duplicateAdmissionStudent && formData.admissionNumber.trim() && (
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
+                  <CheckCircle className="w-3 h-3 shrink-0" />
+                  <span>Admission number is available</span>
+                </div>
+              )}
             </div>
             <div>
               <label className="font-semibold text-slate-700">First Name *</label>
@@ -724,6 +869,7 @@ export const StudentsView: React.FC = () => {
         onClose={() => setIsViewModalOpen(false)}
         student={selectedStudent}
         school={school}
+        onDelete={(std) => handleOpenDeleteModal(std)}
         onEdit={(std) => {
           setIsViewModalOpen(false);
           setSelectedStudent(std);
@@ -756,6 +902,77 @@ export const StudentsView: React.FC = () => {
           setIsAddModalOpen(true);
         }}
       />
+
+      {/* Delete Student Permanent Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          if (!isDeleting) setIsDeleteModalOpen(false);
+        }}
+        title="Delete Learner Record"
+        subtitle="Permanent record deletion from school directory"
+        maxWidth="md"
+      >
+        {studentToDelete && (
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-rose-900 text-sm">Are you sure you want to delete this student?</p>
+                <p className="mt-1 text-rose-800">
+                  This action is irreversible and will permanently remove the student profile from the school registry.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Learner Name:</span>
+                <span className="font-bold text-slate-900">{studentToDelete.fullName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Admission Number:</span>
+                <span className="font-bold text-blue-900">{studentToDelete.admissionNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Class & Stream:</span>
+                <span className="font-semibold text-slate-700">{studentToDelete.currentClass} • {studentToDelete.stream}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500 font-medium">Fee Balance:</span>
+                <span className={`font-bold ${studentToDelete.totalBalance > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  KES {studentToDelete.totalBalance.toLocaleString()}
+                </span>
+              </div>
+              {studentToDelete.totalBalance > 0 && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 mt-2">
+                  Notice: This learner has an outstanding fee balance of KES {studentToDelete.totalBalance.toLocaleString()}.
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-200">
+              <Button
+                variant="outline"
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setIsDeleteModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDeleteStudent}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                {isDeleting ? 'Deleting...' : 'Delete Student Permanently'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Class Batch Promotion Modal */}
       <Modal
