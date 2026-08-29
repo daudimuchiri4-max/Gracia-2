@@ -33,6 +33,44 @@ export interface ReceiptItem {
   totalPrice: number;
 }
 
+export interface DailyAttendanceReportData {
+  date: string;
+  academicYear?: string;
+  term?: string;
+  totalEnrolled: number;
+  totalPresent: number;
+  totalLate: number;
+  totalAbsent: number;
+  totalExcused: number;
+  attendanceRate: number;
+  boysEnrolled?: number;
+  boysPresent?: number;
+  girlsEnrolled?: number;
+  girlsPresent?: number;
+  classSummaries: {
+    classLevel: string;
+    stream: string;
+    enrolled: number;
+    present: number;
+    late: number;
+    absent: number;
+    excused: number;
+    rate: number;
+    recordedBy?: string;
+  }[];
+  absenteeList: {
+    admissionNumber: string;
+    studentName: string;
+    classLevel: string;
+    stream: string;
+    parentName?: string;
+    parentPhone?: string;
+    status: 'ABSENT' | 'LATE' | 'EXCUSED' | 'SICK';
+    remarks?: string;
+  }[];
+  notes?: string;
+}
+
 export interface ThermalReceiptData {
   receiptNumber: string;
   date: string | Date;
@@ -1708,6 +1746,290 @@ class PrinterService {
     `;
 
     this.printViaIframe(html, 'A5', `Login-Credentials-${user.fullName}`);
+  }
+
+  /**
+   * Print Official Daily Attendance Diary & Summary Report (A4 Format)
+   */
+  public printDailyAttendanceReport(reportData: DailyAttendanceReportData, school: School | null): void {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const baseTag = origin ? `<base href="${origin}/">` : '';
+    const schoolName = school?.name || 'GRACIA LEARNING CENTRE';
+    const schoolMotto = school?.motto || 'Nurturing Potential, Inspiring Excellence';
+    const schoolAddress = school?.address || 'P.O. Box 1234 - 00100, Nairobi, Kenya';
+    const schoolPhone = school?.phone || '+254 700 000 000';
+    const schoolEmail = school?.email || 'admin@graciaschool.ac.ke';
+    const regNo = (school as any)?.registrationNumber || (school as any)?.regNo || 'MOE/PRI/2024/9941';
+
+    const formattedDate = new Date(reportData.date).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const isHighAttendance = reportData.attendanceRate >= 90;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Daily Attendance Diary - ${reportData.date}</title>
+        ${baseTag}
+        <meta charset="utf-8">
+        <style>
+          @page { size: A4 portrait; margin: 12mm 12mm 12mm 12mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            font-size: 11px;
+            line-height: 1.4;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .report-container { max-width: 100%; margin: 0 auto; }
+          
+          /* Header */
+          .header-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 8px; }
+          .logo-cell { width: 75px; vertical-align: middle; text-align: center; }
+          .logo-img { width: 68px; height: 68px; object-fit: contain; }
+          .logo-placeholder { width: 65px; height: 65px; background: #0f172a; color: #fff; border-radius: 8px; font-size: 24px; font-weight: 900; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
+          .school-info { text-align: center; vertical-align: middle; padding: 0 10px; }
+          .school-name { font-size: 18px; font-weight: 900; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; }
+          .school-motto { font-size: 10px; font-style: italic; color: #475569; margin-top: 1px; }
+          .school-contacts { font-size: 9.5px; color: #64748b; margin-top: 2px; }
+          .doc-badge-cell { width: 110px; vertical-align: middle; text-align: right; }
+          .doc-badge { display: inline-block; background: #0f172a; color: #fff; padding: 4px 8px; font-size: 10px; font-weight: 800; border-radius: 4px; text-transform: uppercase; text-align: center; }
+          .doc-badge-sub { font-size: 8.5px; color: #64748b; margin-top: 3px; display: block; }
+
+          /* Meta Grid */
+          .meta-strip { display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 7px 12px; margin-bottom: 12px; }
+          .meta-item { font-size: 10px; }
+          .meta-label { color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 8.5px; display: block; }
+          .meta-value { font-weight: 800; color: #0f172a; font-size: 11px; }
+
+          /* KPI Summary Cards */
+          .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px; }
+          .kpi-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; text-align: center; background: #ffffff; }
+          .kpi-title { font-size: 8.5px; font-weight: 700; text-transform: uppercase; color: #64748b; }
+          .kpi-num { font-size: 18px; font-weight: 900; font-family: monospace; margin: 2px 0; }
+          .kpi-sub { font-size: 8.5px; color: #94a3b8; font-weight: 600; }
+
+          /* Section Titles */
+          .section-title { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #0f172a; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; border-left: 3px solid #0f172a; padding-left: 6px; }
+          
+          /* Tables */
+          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9.5px; }
+          .data-table th { background: #0f172a; color: #ffffff; padding: 5px 6px; font-weight: 700; text-align: left; text-transform: uppercase; font-size: 8.5px; border: 1px solid #0f172a; }
+          .data-table td { padding: 5px 6px; border: 1px solid #e2e8f0; vertical-align: middle; }
+          .data-table tr:nth-child(even) td { background: #f8fafc; }
+          .data-table tr.total-row td { font-weight: 800; background: #f1f5f9; border-top: 2px solid #0f172a; font-size: 10px; }
+          
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .font-bold { font-weight: 700; }
+          .font-mono { font-family: monospace; }
+          
+          .badge-present { background: #ecfdf5; color: #065f46; font-weight: 700; padding: 2px 5px; border-radius: 3px; font-size: 8.5px; }
+          .badge-absent { background: #fef2f2; color: #991b1b; font-weight: 700; padding: 2px 5px; border-radius: 3px; font-size: 8.5px; }
+          .badge-late { background: #fffbeb; color: #92400e; font-weight: 700; padding: 2px 5px; border-radius: 3px; font-size: 8.5px; }
+          .badge-excused { background: #f0f9ff; color: #0369a1; font-weight: 700; padding: 2px 5px; border-radius: 3px; font-size: 8.5px; }
+
+          /* Signatures */
+          .sign-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 20px; padding-top: 10px; }
+          .sign-box { border-top: 1px solid #94a3b8; padding-top: 4px; font-size: 9px; text-align: center; }
+          .sign-role { font-weight: 800; color: #0f172a; text-transform: uppercase; font-size: 9.5px; }
+          .sign-date { color: #64748b; margin-top: 2px; }
+
+          .footer-note { margin-top: 15px; font-size: 8px; color: #94a3b8; text-align: center; border-top: 1px dashed #e2e8f0; padding-top: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="report-container">
+          <!-- School Letterhead -->
+          <table class="header-table">
+            <tr>
+              <td class="logo-cell">
+                ${school?.logoUrl ? `<img src="${school.logoUrl}" class="logo-img" alt="School Crest">` : `<div class="logo-placeholder">${schoolName.charAt(0)}</div>`}
+              </td>
+              <td class="school-info">
+                <div class="school-name">${schoolName}</div>
+                <div class="school-motto">"${schoolMotto}"</div>
+                <div class="school-contacts">${schoolAddress} • Tel: ${schoolPhone} • Email: ${schoolEmail}</div>
+              </td>
+              <td class="doc-badge-cell">
+                <div class="doc-badge">DAILY ATTENDANCE DIARY</div>
+                <span class="doc-badge-sub">Reg: ${regNo}</span>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Meta Information -->
+          <div class="meta-strip">
+            <div class="meta-item">
+              <span class="meta-label">Date of Roll Call</span>
+              <span class="meta-value">${formattedDate}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Academic Year / Term</span>
+              <span class="meta-value">${reportData.academicYear || new Date().getFullYear()} • ${reportData.term || 'Term 1'}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Overall School Attendance</span>
+              <span class="meta-value" style="color: ${isHighAttendance ? '#15803d' : '#b45309'}; font-size: 13px;">${reportData.attendanceRate.toFixed(1)}%</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Ministry Report Code</span>
+              <span class="meta-value">NEMIS-ATT-D${reportData.date.replace(/-/g, '')}</span>
+            </div>
+          </div>
+
+          <!-- KPI Summary Cards -->
+          <div class="kpi-grid">
+            <div class="kpi-card" style="background: #f8fafc;">
+              <div class="kpi-title">Total on Roll</div>
+              <div class="kpi-num" style="color: #0f172a;">${reportData.totalEnrolled}</div>
+              <div class="kpi-sub">Registered Learners</div>
+            </div>
+            <div class="kpi-card" style="background: #ecfdf5; border-color: #a7f3d0;">
+              <div class="kpi-title" style="color: #065f46;">Present</div>
+              <div class="kpi-num" style="color: #047857;">${reportData.totalPresent}</div>
+              <div class="kpi-sub" style="color: #059669;">${reportData.totalEnrolled > 0 ? ((reportData.totalPresent / reportData.totalEnrolled) * 100).toFixed(1) : 0}% of Total</div>
+            </div>
+            <div class="kpi-card" style="background: #fffbeb; border-color: #fde68a;">
+              <div class="kpi-title" style="color: #92400e;">Late Arrivals</div>
+              <div class="kpi-num" style="color: #b45309;">${reportData.totalLate}</div>
+              <div class="kpi-sub" style="color: #b45309;">Gate / Tardy</div>
+            </div>
+            <div class="kpi-card" style="background: #fef2f2; border-color: #fecaca;">
+              <div class="kpi-title" style="color: #991b1b;">Absent</div>
+              <div class="kpi-num" style="color: #dc2626;">${reportData.totalAbsent}</div>
+              <div class="kpi-sub" style="color: #dc2626;">Unexcused</div>
+            </div>
+            <div class="kpi-card" style="background: #f0f9ff; border-color: #bae6fd;">
+              <div class="kpi-title" style="color: #0369a1;">Excused / Sick</div>
+              <div class="kpi-num" style="color: #0284c7;">${reportData.totalExcused}</div>
+              <div class="kpi-sub" style="color: #0284c7;">With Permission</div>
+            </div>
+          </div>
+
+          <!-- Class-by-Class Attendance Summary -->
+          <div class="section-title">
+            <span>1. Class-by-Class Attendance Breakdown</span>
+            <span style="font-size: 8.5px; font-weight: normal; color: #64748b;">All Streams & Grades</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 25px;">#</th>
+                <th>Class / Grade</th>
+                <th>Stream</th>
+                <th class="text-center" style="width: 60px;">Enrolled</th>
+                <th class="text-center" style="width: 60px;">Present</th>
+                <th class="text-center" style="width: 50px;">Late</th>
+                <th class="text-center" style="width: 50px;">Absent</th>
+                <th class="text-center" style="width: 50px;">Excused</th>
+                <th class="text-right" style="width: 70px;">Rate (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportData.classSummaries.map((cls, idx) => `
+                <tr>
+                  <td class="text-center">${idx + 1}</td>
+                  <td class="font-bold">${cls.classLevel}</td>
+                  <td>${cls.stream}</td>
+                  <td class="text-center font-mono">${cls.enrolled}</td>
+                  <td class="text-center font-mono font-bold" style="color: #047857;">${cls.present}</td>
+                  <td class="text-center font-mono" style="color: #b45309;">${cls.late}</td>
+                  <td class="text-center font-mono font-bold" style="color: #dc2626;">${cls.absent}</td>
+                  <td class="text-center font-mono" style="color: #0284c7;">${cls.excused}</td>
+                  <td class="text-right font-mono font-bold" style="${cls.rate >= 90 ? 'color: #15803d;' : 'color: #b45309;'}">${cls.rate.toFixed(1)}%</td>
+                </tr>
+              `).join('')}
+              <tr class="total-row">
+                <td colspan="3" class="font-bold">TOTAL SCHOOL ROLL</td>
+                <td class="text-center font-mono">${reportData.totalEnrolled}</td>
+                <td class="text-center font-mono" style="color: #047857;">${reportData.totalPresent}</td>
+                <td class="text-center font-mono" style="color: #b45309;">${reportData.totalLate}</td>
+                <td class="text-center font-mono" style="color: #dc2626;">${reportData.totalAbsent}</td>
+                <td class="text-center font-mono" style="color: #0284c7;">${reportData.totalExcused}</td>
+                <td class="text-right font-mono">${reportData.attendanceRate.toFixed(1)}%</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Absentee Follow-Up Register -->
+          <div class="section-title" style="margin-top: 10px;">
+            <span>2. Absentee & Disciplinary Follow-Up Register (${reportData.absenteeList.length} Learners)</span>
+            <span style="font-size: 8.5px; font-weight: normal; color: #64748b;">Required for Parent Contact & NEMIS Logging</span>
+          </div>
+
+          ${reportData.absenteeList.length === 0 ? `
+            <div style="padding: 10px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 4px; text-align: center; color: #065f46; font-weight: 700; margin-bottom: 14px;">
+              ✓ Exemplary Record: 100% Attendance recorded today across all scheduled classes! No absentees.
+            </div>
+          ` : `
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 25px;">#</th>
+                  <th style="width: 70px;">Adm No</th>
+                  <th>Learner Name</th>
+                  <th>Class & Stream</th>
+                  <th style="width: 75px;">Status</th>
+                  <th>Guardian Name</th>
+                  <th style="width: 95px;">Guardian Phone</th>
+                  <th>Remarks / Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${reportData.absenteeList.map((abs, idx) => `
+                  <tr>
+                    <td class="text-center">${idx + 1}</td>
+                    <td class="font-mono font-bold">${abs.admissionNumber}</td>
+                    <td class="font-bold">${abs.studentName}</td>
+                    <td>${abs.classLevel} ${abs.stream}</td>
+                    <td>
+                      <span class="${abs.status === 'LATE' ? 'badge-late' : abs.status === 'EXCUSED' || abs.status === 'SICK' ? 'badge-excused' : 'badge-absent'}">
+                        ${abs.status}
+                      </span>
+                    </td>
+                    <td>${abs.parentName || 'Parent/Guardian'}</td>
+                    <td class="font-mono">${abs.parentPhone || '-'}</td>
+                    <td style="color: #475569;">${abs.remarks || 'No reason provided'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+
+          <!-- Administrative Signatures -->
+          <div class="sign-grid">
+            <div class="sign-box">
+              <div class="sign-role">Duty Master / Teacher</div>
+              <div class="sign-date">Sign: ___________________ Date: ${reportData.date}</div>
+            </div>
+            <div class="sign-box">
+              <div class="sign-role">Deputy Headteacher</div>
+              <div class="sign-date">Sign: ___________________ Date: ${reportData.date}</div>
+            </div>
+            <div class="sign-box">
+              <div class="sign-role">Headteacher / Principal</div>
+              <div class="sign-date">Official Stamp & Date</div>
+            </div>
+          </div>
+
+          <div class="footer-note">
+            Official Ministry of Education Attendance Record • System Generated on ${new Date().toLocaleString('en-GB')} by ${schoolName} ERP
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    this.printViaIframe(html, 'A4', `Daily-Attendance-Diary-${reportData.date}`);
   }
 
   /**

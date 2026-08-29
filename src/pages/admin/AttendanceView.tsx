@@ -34,6 +34,20 @@ import {
   Download,
   Eye,
   Keyboard,
+  FileSpreadsheet,
+  FileText,
+  Filter,
+  Search,
+  PhoneCall,
+  MessageSquare,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  UserCheck,
+  UserX,
+  Layers,
+  BookOpen,
 } from 'lucide-react';
 
 const GRADE_LEVELS: GradeLevel[] = [
@@ -65,7 +79,17 @@ export const AttendanceView: React.FC = () => {
   const { school, user } = useAuth();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'ROLL_CALL' | 'QR_SCANNER' | 'QR_CARDS'>('ROLL_CALL');
+  const [activeTab, setActiveTab] = useState<'ROLL_CALL' | 'QR_SCANNER' | 'DAILY_REPORT' | 'QR_CARDS'>('ROLL_CALL');
+
+  // Daily Report State
+  const [reportDate, setReportDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [reportClassFilter, setReportClassFilter] = useState<string>('ALL');
+  const [reportStreamFilter, setReportStreamFilter] = useState<string>('ALL');
+  const [reportStatusFilter, setReportStatusFilter] = useState<'ALL' | 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED'>('ALL');
+  const [reportSearchTerm, setReportSearchTerm] = useState<string>('');
+  const [reportViewMode, setReportViewMode] = useState<'OVERVIEW' | 'ROSTER' | 'ABSENTEES'>('OVERVIEW');
+  const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [loadingReport, setLoadingReport] = useState<boolean>(false);
 
   // Roll-Call State
   const [selectedClass, setSelectedClass] = useState<GradeLevel>('Grade 6');
@@ -937,6 +961,294 @@ export const AttendanceView: React.FC = () => {
     }
   };
 
+  // Load Daily Attendance Records when date or tab changes
+  const loadDailyAttendanceReport = async (dateStr: string) => {
+    if (!school?.id) return;
+    setLoadingReport(true);
+    try {
+      const records = await attendanceService.getAttendanceRecords(school.id, {
+        date: dateStr,
+      });
+      setDailyAttendanceRecords(records);
+    } catch (e: any) {
+      console.error('Error loading daily attendance report:', e);
+      showToast('Error loading attendance records for ' + dateStr, 'error');
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  useEffect(() => {
+    if (school?.id && (activeTab === 'DAILY_REPORT' || dailyAttendanceRecords.length === 0)) {
+      loadDailyAttendanceReport(reportDate);
+    }
+  }, [school?.id, reportDate, activeTab]);
+
+  // Date Navigation Helpers
+  const shiftReportDate = (days: number) => {
+    const d = new Date(reportDate);
+    d.setDate(d.getDate() + days);
+    const newStr = d.toISOString().split('T')[0];
+    setReportDate(newStr);
+  };
+
+  // Build student status lookup map for reportDate
+  const reportStudentStatusMap: Record<
+    string,
+    {
+      status: 'PRESENT' | 'LATE' | 'ABSENT' | 'EXCUSED' | 'SICK' | 'NOT_RECORDED';
+      remarks?: string;
+      recordedBy?: string;
+      checkInTime?: string;
+    }
+  > = {};
+
+  const isReportDateToday = reportDate === new Date().toISOString().split('T')[0];
+
+  // 1. From saved AttendanceRecord entries for this date
+  dailyAttendanceRecords.forEach((rec) => {
+    rec.entries.forEach((ent) => {
+      const timeMatch = ent.remarks?.match(/\((.*?)\)/);
+      const timeVal = timeMatch ? timeMatch[1] : undefined;
+      const data = {
+        status: ent.status,
+        remarks: ent.remarks || '',
+        recordedBy: rec.recordedBy,
+        checkInTime: timeVal,
+      };
+      reportStudentStatusMap[ent.studentId] = data;
+      if (ent.admissionNumber) {
+        reportStudentStatusMap[ent.admissionNumber] = data;
+        reportStudentStatusMap[ent.admissionNumber.toLowerCase()] = data;
+      }
+    });
+  });
+
+  // 2. If report is today, also incorporate live gate scans if not in class roll
+  if (isReportDateToday) {
+    (Object.entries(checkedInTodayMap) as [string, { time: string; status: 'PRESENT' | 'LATE'; studentName: string }][]).forEach(([idOrAdm, check]) => {
+      if (!reportStudentStatusMap[idOrAdm] || reportStudentStatusMap[idOrAdm].status === 'NOT_RECORDED') {
+        reportStudentStatusMap[idOrAdm] = {
+          status: check.status,
+          remarks: `Gate Terminal Scan (${check.time})`,
+          checkInTime: check.time,
+        };
+      }
+    });
+  }
+
+  // Filter students by selected reportClassFilter & reportStreamFilter & Search & Status
+  const filteredReportStudents = allSchoolStudents.filter((st) => {
+    if (reportClassFilter !== 'ALL' && st.currentClass !== reportClassFilter) return false;
+    if (reportStreamFilter !== 'ALL' && st.stream !== reportStreamFilter) return false;
+
+    // Status Filter
+    const info = reportStudentStatusMap[st.id] || (st.admissionNumber ? reportStudentStatusMap[st.admissionNumber] : undefined);
+    const hasClassRecord = dailyAttendanceRecords.some((r) => r.classLevel === st.currentClass);
+    const resolvedStatus = info?.status || (hasClassRecord ? 'ABSENT' : 'NOT_RECORDED');
+
+    if (reportStatusFilter !== 'ALL') {
+      if (reportStatusFilter === 'PRESENT' && resolvedStatus !== 'PRESENT') return false;
+      if (reportStatusFilter === 'LATE' && resolvedStatus !== 'LATE') return false;
+      if (reportStatusFilter === 'ABSENT' && resolvedStatus !== 'ABSENT' && resolvedStatus !== 'NOT_RECORDED') return false;
+      if (reportStatusFilter === 'EXCUSED' && resolvedStatus !== 'EXCUSED' && resolvedStatus !== 'SICK') return false;
+    }
+
+    // Search query
+    if (reportSearchTerm.trim()) {
+      const q = reportSearchTerm.toLowerCase();
+      const matchName = st.fullName.toLowerCase().includes(q);
+      const matchAdm = st.admissionNumber.toLowerCase().includes(q);
+      const matchParent = st.parentName?.toLowerCase().includes(q) || st.parentPhone?.includes(q);
+      if (!matchName && !matchAdm && !matchParent) return false;
+    }
+    return true;
+  });
+
+  // Total KPIs across filtered scope
+  const repTotalEnrolled = allSchoolStudents.filter((st) => {
+    if (reportClassFilter !== 'ALL' && st.currentClass !== reportClassFilter) return false;
+    if (reportStreamFilter !== 'ALL' && st.stream !== reportStreamFilter) return false;
+    return true;
+  }).length;
+
+  let repPresent = 0;
+  let repLate = 0;
+  let repAbsent = 0;
+  let repExcused = 0;
+  let repBoysEnrolled = 0;
+  let repBoysPresent = 0;
+  let repGirlsEnrolled = 0;
+  let repGirlsPresent = 0;
+
+  allSchoolStudents.forEach((st) => {
+    if (reportClassFilter !== 'ALL' && st.currentClass !== reportClassFilter) return;
+    if (reportStreamFilter !== 'ALL' && st.stream !== reportStreamFilter) return;
+
+    if (st.gender === 'MALE') repBoysEnrolled++;
+    else repGirlsEnrolled++;
+
+    const info = reportStudentStatusMap[st.id] || (st.admissionNumber ? reportStudentStatusMap[st.admissionNumber] : undefined);
+    const hasClassRecord = dailyAttendanceRecords.some((r) => r.classLevel === st.currentClass);
+    const stat = info?.status || (hasClassRecord ? 'ABSENT' : 'NOT_RECORDED');
+
+    if (stat === 'PRESENT') {
+      repPresent++;
+      if (st.gender === 'MALE') repBoysPresent++;
+      else repGirlsPresent++;
+    } else if (stat === 'LATE') {
+      repLate++;
+      repPresent++; // Late learners are present in school
+      if (st.gender === 'MALE') repBoysPresent++;
+      else repGirlsPresent++;
+    } else if (stat === 'EXCUSED' || stat === 'SICK') {
+      repExcused++;
+    } else if (stat === 'ABSENT' || stat === 'NOT_RECORDED') {
+      repAbsent++;
+    }
+  });
+
+  const repAttendanceRate = repTotalEnrolled > 0 ? (repPresent / repTotalEnrolled) * 100 : 0;
+
+  // Class-by-Class Breakdown
+  const classBreakdowns = GRADE_LEVELS.map((grade) => {
+    const classStudents = allSchoolStudents.filter((s) => s.currentClass === grade);
+    const streams: string[] = Array.from(new Set<string>(classStudents.map((s) => s.stream || 'East')));
+
+    return streams.map((str: string) => {
+      const streamStudents = classStudents.filter((s) => (s.stream || 'East') === str);
+      const enrolled = streamStudents.length;
+      let present = 0;
+      let late = 0;
+      let absent = 0;
+      let excused = 0;
+
+      streamStudents.forEach((st) => {
+        const info = reportStudentStatusMap[st.id] || (st.admissionNumber ? reportStudentStatusMap[st.admissionNumber] : undefined);
+        const hasClassRec = dailyAttendanceRecords.some((r) => r.classLevel === grade && r.stream === str);
+        const stat = info?.status || (hasClassRec ? 'ABSENT' : 'NOT_RECORDED');
+
+        if (stat === 'PRESENT') present++;
+        else if (stat === 'LATE') {
+          late++;
+          present++;
+        } else if (stat === 'EXCUSED' || stat === 'SICK') excused++;
+        else absent++;
+      });
+
+      const rate = enrolled > 0 ? (present / enrolled) * 100 : 0;
+      const rec = dailyAttendanceRecords.find((r) => r.classLevel === grade && r.stream === str);
+
+      return {
+        classLevel: grade,
+        stream: str,
+        enrolled,
+        present,
+        late,
+        absent,
+        excused,
+        rate,
+        recordedBy: rec?.recordedBy || (enrolled === 0 ? '-' : 'Roll Pending / Gate Live'),
+      };
+    });
+  })
+    .flat()
+    .filter((cb) => cb.enrolled > 0);
+
+  // Absentee and Follow-Up List
+  const absenteeList = allSchoolStudents
+    .filter((st) => {
+      if (reportClassFilter !== 'ALL' && st.currentClass !== reportClassFilter) return false;
+      if (reportStreamFilter !== 'ALL' && st.stream !== reportStreamFilter) return false;
+      const info = reportStudentStatusMap[st.id] || (st.admissionNumber ? reportStudentStatusMap[st.admissionNumber] : undefined);
+      const hasClassRec = dailyAttendanceRecords.some((r) => r.classLevel === st.currentClass);
+      const stat = info?.status || (hasClassRec ? 'ABSENT' : 'NOT_RECORDED');
+      return stat === 'ABSENT' || stat === 'LATE' || stat === 'EXCUSED' || stat === 'SICK' || stat === 'NOT_RECORDED';
+    })
+    .map((st) => {
+      const info = reportStudentStatusMap[st.id] || (st.admissionNumber ? reportStudentStatusMap[st.admissionNumber] : undefined);
+      const hasClassRec = dailyAttendanceRecords.some((r) => r.classLevel === st.currentClass);
+      const status = (info?.status || (hasClassRec ? 'ABSENT' : 'ABSENT')) as 'ABSENT' | 'LATE' | 'EXCUSED' | 'SICK';
+      return {
+        admissionNumber: st.admissionNumber,
+        studentName: st.fullName,
+        classLevel: st.currentClass,
+        stream: st.stream || 'East',
+        parentName: st.parentName,
+        parentPhone: st.parentPhone,
+        status,
+        remarks: info?.remarks || (status === 'ABSENT' ? 'Unexcused Absence' : ''),
+      };
+    });
+
+  const handlePrintDailyReport = () => {
+    const reportData = {
+      date: reportDate,
+      academicYear: `${new Date(reportDate).getFullYear()}`,
+      term: 'Term 1',
+      totalEnrolled: repTotalEnrolled,
+      totalPresent: repPresent,
+      totalLate: repLate,
+      totalAbsent: repAbsent,
+      totalExcused: repExcused,
+      attendanceRate: repAttendanceRate,
+      boysEnrolled: repBoysEnrolled,
+      boysPresent: repBoysPresent,
+      girlsEnrolled: repGirlsEnrolled,
+      girlsPresent: repGirlsPresent,
+      classSummaries: classBreakdowns,
+      absenteeList: absenteeList,
+    };
+    printerService.printDailyAttendanceReport(reportData, school);
+    showToast(`Generating printable Daily Attendance Diary for ${reportDate}...`, 'info');
+  };
+
+  const handleExportDailyCsv = () => {
+    const headers = [
+      'AdmNo',
+      'StudentName',
+      'Gender',
+      'ClassLevel',
+      'Stream',
+      'AttendanceStatus',
+      'CheckInTime_Remarks',
+      'ParentGuardianName',
+      'ParentPhone',
+      'Date',
+    ];
+
+    const rows = filteredReportStudents.map((st) => {
+      const info = reportStudentStatusMap[st.id] || (st.admissionNumber ? reportStudentStatusMap[st.admissionNumber] : undefined);
+      const hasClassRecord = dailyAttendanceRecords.some((r) => r.classLevel === st.currentClass);
+      const status = info?.status || (hasClassRecord ? 'ABSENT' : 'NOT_RECORDED');
+      return [
+        st.admissionNumber,
+        `"${st.fullName}"`,
+        st.gender,
+        st.currentClass,
+        st.stream || '',
+        status,
+        `"${info?.remarks || info?.checkInTime || ''}"`,
+        `"${st.parentName || ''}"`,
+        st.parentPhone || '',
+        reportDate,
+      ];
+    });
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [`# Daily Attendance Diary - ${school?.name || 'Gracia School'} (${reportDate})`, headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `Daily_Attendance_Diary_${reportDate}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Downloaded Daily Attendance Diary (${reportDate}).csv`, 'success');
+  };
+
   const statusList = Object.values(statusMap) as { status: AttendanceRecord['entries'][0]['status']; remarks?: string }[];
   const presentCount = statusList.filter((v) => v.status === 'PRESENT').length;
   const absentCount = statusList.filter((v) => v.status === 'ABSENT').length;
@@ -963,7 +1275,7 @@ export const AttendanceView: React.FC = () => {
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
           <button
             onClick={() => {
               stopCamera();
@@ -987,6 +1299,20 @@ export const AttendanceView: React.FC = () => {
           >
             <Camera className="w-3.5 h-3.5" />
             Gate QR Scanner
+          </button>
+          <button
+            onClick={() => {
+              stopCamera();
+              setActiveTab('DAILY_REPORT');
+            }}
+            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'DAILY_REPORT'
+                ? 'bg-white text-blue-900 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-blue-800" />
+            Daily Diary Report
           </button>
           <button
             onClick={() => {
@@ -1728,7 +2054,596 @@ export const AttendanceView: React.FC = () => {
         </div>
       )}
 
-      {/* On-Screen Student QR ID Card Preview Modal */}
+      {/* TAB 4: DAILY ATTENDANCE DIARY & ANALYTICS REPORT */}
+      {activeTab === 'DAILY_REPORT' && (
+        <div className="space-y-6">
+          {/* Top Filter & Action Bar */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              {/* Date Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    onClick={() => shiftReportDate(-1)}
+                    title="Previous Day"
+                    className="p-1.5 hover:bg-white hover:text-blue-900 rounded-lg text-slate-600 transition-all cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center gap-1.5 px-2">
+                    <Calendar className="w-4 h-4 text-blue-900" />
+                    <input
+                      type="date"
+                      value={reportDate}
+                      onChange={(e) => setReportDate(e.target.value)}
+                      className="text-xs font-bold text-slate-800 bg-transparent focus:outline-none cursor-pointer"
+                    />
+                  </div>
+                  <button
+                    onClick={() => shiftReportDate(1)}
+                    title="Next Day"
+                    className="p-1.5 hover:bg-white hover:text-blue-900 rounded-lg text-slate-600 transition-all cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setReportDate(new Date().toISOString().split('T')[0])}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    reportDate === new Date().toISOString().split('T')[0]
+                      ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Today
+                </button>
+
+                <button
+                  onClick={() => {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    setReportDate(y.toISOString().split('T')[0]);
+                  }}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Yesterday
+                </button>
+              </div>
+
+              {/* Class & Stream Filters */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <select
+                    value={reportClassFilter}
+                    onChange={(e) => setReportClassFilter(e.target.value)}
+                    className="px-2.5 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-900"
+                  >
+                    <option value="ALL">All Classes (School-wide)</option>
+                    {GRADE_LEVELS.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <select
+                  value={reportStreamFilter}
+                  onChange={(e) => setReportStreamFilter(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-900"
+                >
+                  <option value="ALL">All Streams</option>
+                  <option value="East">East</option>
+                  <option value="West">West</option>
+                  <option value="North">North</option>
+                  <option value="South">South</option>
+                </select>
+
+                <button
+                  onClick={() => loadDailyAttendanceReport(reportDate)}
+                  disabled={loadingReport}
+                  title="Refresh Attendance Data"
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingReport ? 'animate-spin text-blue-900' : ''}`} />
+                </button>
+              </div>
+
+              {/* Print & Export Actions */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={<Download className="w-4 h-4" />}
+                  onClick={handleExportDailyCsv}
+                >
+                  Export CSV
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Printer className="w-4 h-4" />}
+                  onClick={handlePrintDailyReport}
+                >
+                  Print Official Diary (A4)
+                </Button>
+              </div>
+            </div>
+
+            {/* Sub-view Switcher & Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                <button
+                  onClick={() => setReportViewMode('OVERVIEW')}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    reportViewMode === 'OVERVIEW'
+                      ? 'bg-white text-blue-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  Class Breakdown Matrix
+                </button>
+                <button
+                  onClick={() => setReportViewMode('ROSTER')}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    reportViewMode === 'ROSTER'
+                      ? 'bg-white text-blue-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  Student Roll ({filteredReportStudents.length})
+                </button>
+                <button
+                  onClick={() => setReportViewMode('ABSENTEES')}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    reportViewMode === 'ABSENTEES'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Absentee Diary & Calls ({absenteeList.length})
+                </button>
+              </div>
+
+              {reportViewMode !== 'OVERVIEW' && (
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search name, adm, phone..."
+                      value={reportSearchTerm}
+                      onChange={(e) => setReportSearchTerm(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:border-blue-900 w-48 sm:w-60"
+                    />
+                  </div>
+
+                  {reportViewMode === 'ROSTER' && (
+                    <select
+                      value={reportStatusFilter}
+                      onChange={(e) => setReportStatusFilter(e.target.value as any)}
+                      className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-900"
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="PRESENT">Present Only</option>
+                      <option value="LATE">Late Arrivals</option>
+                      <option value="ABSENT">Absent</option>
+                      <option value="EXCUSED">Excused / Sick</option>
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* KPI Analytics Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Total Roll */}
+            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-500">Total Enrollment</span>
+                <div className="p-2 bg-blue-50 text-blue-900 rounded-xl">
+                  <Users className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-slate-900">{repTotalEnrolled}</div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                👦 {repBoysEnrolled} Boys • 👧 {repGirlsEnrolled} Girls
+              </div>
+            </div>
+
+            {/* Present Learners */}
+            <div className="bg-white rounded-2xl p-5 border border-emerald-200/80 shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-emerald-700">Present in School</span>
+                <div className="p-2 bg-emerald-50 text-emerald-800 rounded-xl">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-emerald-900">{repPresent}</div>
+              <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-700">
+                <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md">
+                  {repAttendanceRate.toFixed(1)}%
+                </span>
+                <span>Turnout Rate</span>
+              </div>
+            </div>
+
+            {/* Late Arrivals */}
+            <div className="bg-white rounded-2xl p-5 border border-amber-200/80 shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-amber-700">Late Check-ins</span>
+                <div className="p-2 bg-amber-50 text-amber-800 rounded-xl">
+                  <Clock className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-amber-900">{repLate}</div>
+              <div className="text-[11px] text-amber-700 font-medium">
+                Arrived after morning bell
+              </div>
+            </div>
+
+            {/* Absentees */}
+            <div className="bg-white rounded-2xl p-5 border border-rose-200/80 shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-rose-700">Unexcused Absences</span>
+                <div className="p-2 bg-rose-50 text-rose-800 rounded-xl">
+                  <UserX className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-rose-900">{repAbsent}</div>
+              <div className="text-[11px] text-rose-600 font-medium">
+                Requires follow-up call
+              </div>
+            </div>
+
+            {/* Excused / Sick */}
+            <div className="bg-white rounded-2xl p-5 border border-blue-200/80 shadow-xs space-y-2 col-span-2 lg:col-span-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-700">Excused / Sick</span>
+                <div className="p-2 bg-blue-50 text-blue-800 rounded-xl">
+                  <HeartPulse className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="text-2xl font-black text-blue-900">{repExcused}</div>
+              <div className="text-[11px] text-blue-700 font-medium">
+                Approved parent notices
+              </div>
+            </div>
+          </div>
+
+          {/* SUB-VIEW 1: CLASS BREAKDOWN MATRIX */}
+          {reportViewMode === 'OVERVIEW' && (
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+              <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50">
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">CBC Class & Stream Attendance Summary</h3>
+                  <p className="text-xs text-slate-500">
+                    Comprehensive roll breakdown across all levels for {new Date(reportDate).toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="neutral">{classBreakdowns.length} Active Streams</Badge>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 bg-slate-100/70 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-4">Class Level</th>
+                      <th className="py-3 px-4">Stream</th>
+                      <th className="py-3 px-4 text-center">Enrolled</th>
+                      <th className="py-3 px-4 text-center text-emerald-800">Present</th>
+                      <th className="py-3 px-4 text-center text-amber-800">Late</th>
+                      <th className="py-3 px-4 text-center text-rose-800">Absent</th>
+                      <th className="py-3 px-4 text-center text-blue-800">Excused</th>
+                      <th className="py-3 px-4 text-center">Turnout Rate</th>
+                      <th className="py-3 px-4">Status / Facilitator</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {classBreakdowns.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-10 text-center text-slate-500 text-xs">
+                          No student records enrolled or registered in this school.
+                        </td>
+                      </tr>
+                    ) : (
+                      classBreakdowns.map((cb, idx) => {
+                        return (
+                          <tr key={`${cb.classLevel}-${cb.stream}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-4 font-bold text-slate-900">{cb.classLevel}</td>
+                            <td className="py-3 px-4 text-slate-600 font-medium">{cb.stream}</td>
+                            <td className="py-3 px-4 text-center font-bold text-slate-800">{cb.enrolled}</td>
+                            <td className="py-3 px-4 text-center font-bold text-emerald-700 bg-emerald-50/30">
+                              {cb.present}
+                            </td>
+                            <td className="py-3 px-4 text-center font-bold text-amber-700 bg-amber-50/30">
+                              {cb.late}
+                            </td>
+                            <td className="py-3 px-4 text-center font-bold text-rose-700 bg-rose-50/30">
+                              {cb.absent}
+                            </td>
+                            <td className="py-3 px-4 text-center font-bold text-blue-700 bg-blue-50/30">
+                              {cb.excused}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <span className="font-bold text-slate-800 w-10 text-right">
+                                  {cb.rate.toFixed(0)}%
+                                </span>
+                                <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${
+                                      cb.rate >= 90
+                                        ? 'bg-emerald-500'
+                                        : cb.rate >= 75
+                                        ? 'bg-blue-500'
+                                        : cb.rate >= 50
+                                        ? 'bg-amber-500'
+                                        : 'bg-rose-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, cb.rate)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-slate-500 text-[11px]">
+                              {cb.recordedBy}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  {classBreakdowns.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
+                        <td colSpan={2} className="py-3 px-4 text-left">
+                          INSTITUTIONAL TOTAL
+                        </td>
+                        <td className="py-3 px-4 text-center">{repTotalEnrolled}</td>
+                        <td className="py-3 px-4 text-center text-emerald-800">{repPresent}</td>
+                        <td className="py-3 px-4 text-center text-amber-800">{repLate}</td>
+                        <td className="py-3 px-4 text-center text-rose-800">{repAbsent}</td>
+                        <td className="py-3 px-4 text-center text-blue-800">{repExcused}</td>
+                        <td className="py-3 px-4 text-center text-emerald-900">
+                          {repAttendanceRate.toFixed(1)}%
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 text-[11px]">
+                          Official Daily Diary Ledger
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-VIEW 2: FULL STUDENT REGISTER ROSTER */}
+          {reportViewMode === 'ROSTER' && (
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+              <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50">
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">Learners Daily Roll Register</h3>
+                  <p className="text-xs text-slate-500">
+                    Individual learner status, scan timestamps, and remarks for {reportDate}
+                  </p>
+                </div>
+                <Badge variant="neutral">{filteredReportStudents.length} Learners Listed</Badge>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 bg-slate-100/70 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-4">Adm No</th>
+                      <th className="py-3 px-4">Learner Name</th>
+                      <th className="py-3 px-4">Class & Stream</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Time / Remarks</th>
+                      <th className="py-3 px-4">Parent / Guardian</th>
+                      <th className="py-3 px-4 text-right">Direct Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredReportStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500">
+                          <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="font-semibold text-slate-700 text-xs">No matching student records found</p>
+                          <p className="text-[11px] text-slate-400">Try adjusting your class, stream, or search query filters.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredReportStudents.map((st) => {
+                        const info = reportStudentStatusMap[st.id] || (st.admissionNumber ? reportStudentStatusMap[st.admissionNumber] : undefined);
+                        const hasClassRec = dailyAttendanceRecords.some((r) => r.classLevel === st.currentClass);
+                        const status = info?.status || (hasClassRec ? 'ABSENT' : 'NOT_RECORDED');
+
+                        return (
+                          <tr key={st.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-3 px-4 font-mono font-bold text-slate-700">{st.admissionNumber}</td>
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-900">{st.fullName}</div>
+                              <div className="text-[10px] text-slate-400 capitalize">{st.gender.toLowerCase()}</div>
+                            </td>
+                            <td className="py-3 px-4 text-slate-600 font-medium">
+                              {st.currentClass} • {st.stream || 'East'}
+                            </td>
+                            <td className="py-3 px-4">
+                              {status === 'PRESENT' && (
+                                <Badge variant="success">Present</Badge>
+                              )}
+                              {status === 'LATE' && (
+                                <Badge variant="warning">Late Arrival</Badge>
+                              )}
+                              {status === 'ABSENT' && (
+                                <Badge variant="danger">Absent</Badge>
+                              )}
+                              {status === 'EXCUSED' && (
+                                <Badge variant="info">Excused</Badge>
+                              )}
+                              {status === 'SICK' && (
+                                <Badge variant="info">Sick Leave</Badge>
+                              )}
+                              {status === 'NOT_RECORDED' && (
+                                <Badge variant="neutral">Not Recorded</Badge>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-slate-600 text-xs">
+                              {info?.checkInTime ? (
+                                <span className="font-mono text-slate-800 font-bold">
+                                  ⏱ {info.checkInTime}
+                                </span>
+                              ) : info?.remarks ? (
+                                <span>{info.remarks}</span>
+                              ) : (
+                                <span className="text-slate-400 italic">No notes</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-xs">
+                              <div className="font-medium text-slate-800">{st.parentName || 'Parent / Guardian'}</div>
+                              <div className="text-[11px] font-mono text-slate-500">{st.parentPhone || '-'}</div>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {st.parentPhone && (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <a
+                                    href={`https://wa.me/${st.parentPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                                      `Dear Parent, attendance update for ${st.fullName} (${st.admissionNumber}) at ${school?.name || 'School'}: Status on ${reportDate} is ${status}.`
+                                    )}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    title="Send WhatsApp notice"
+                                    className="p-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                  </a>
+                                  <a
+                                    href={`tel:${st.parentPhone}`}
+                                    title="Call parent"
+                                    className="p-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <PhoneCall className="w-3.5 h-3.5" />
+                                  </a>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-VIEW 3: ABSENTEE & FOLLOW-UP DIARY */}
+          {reportViewMode === 'ABSENTEES' && (
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden space-y-4">
+              <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-amber-50/40">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-100 text-amber-900 rounded-xl">
+                    <AlertCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">Absentee & Disciplinary Follow-Up Roster</h3>
+                    <p className="text-xs text-slate-600">
+                      Learners requiring parental notification or attendance verification for {reportDate}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="warning">{absenteeList.length} Learners Absent or Late</Badge>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200/80 bg-slate-100/70 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+                      <th className="py-3 px-4">Adm No</th>
+                      <th className="py-3 px-4">Learner Name</th>
+                      <th className="py-3 px-4">Class</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Reason / Notes</th>
+                      <th className="py-3 px-4">Guardian Contact</th>
+                      <th className="py-3 px-4 text-center">Urgent Follow-Up</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {absenteeList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500">
+                          <CheckCircle2 className="w-9 h-9 text-emerald-500 mx-auto mb-2" />
+                          <p className="font-bold text-slate-800 text-sm">No Unexcused Absentees Today!</p>
+                          <p className="text-xs text-slate-400">All registered learners are present in school.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      absenteeList.map((abs, i) => (
+                        <tr key={`${abs.admissionNumber}-${i}`} className="hover:bg-amber-50/20 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-slate-700">{abs.admissionNumber}</td>
+                          <td className="py-3 px-4 font-bold text-slate-900">{abs.studentName}</td>
+                          <td className="py-3 px-4 text-slate-600">
+                            {abs.classLevel} {abs.stream}
+                          </td>
+                          <td className="py-3 px-4">
+                            {abs.status === 'LATE' && <Badge variant="warning">Late</Badge>}
+                            {abs.status === 'ABSENT' && <Badge variant="danger">Absent</Badge>}
+                            {abs.status === 'EXCUSED' && <Badge variant="info">Excused</Badge>}
+                            {abs.status === 'SICK' && <Badge variant="info">Sick</Badge>}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600">{abs.remarks || 'No reason provided'}</td>
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-slate-800">{abs.parentName || 'Parent / Guardian'}</div>
+                            <div className="font-mono text-slate-500 text-[11px]">{abs.parentPhone || 'No phone recorded'}</div>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {abs.parentPhone ? (
+                              <div className="flex items-center justify-center gap-2">
+                                <a
+                                  href={`https://wa.me/${abs.parentPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                                    `Dear Parent/Guardian of ${abs.studentName} (${abs.admissionNumber}), our records indicate the student is marked ${abs.status} today (${reportDate}) at ${school?.name || 'our school'}. Please contact us immediately if this is unexpected.`
+                                  )}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 transition-colors"
+                                >
+                                  <MessageSquare className="w-3 h-3" />
+                                  WhatsApp
+                                </a>
+                                <a
+                                  href={`tel:${abs.parentPhone}`}
+                                  className="px-2.5 py-1 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 transition-colors"
+                                >
+                                  <PhoneCall className="w-3 h-3" />
+                                  Call
+                                </a>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">No contact</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {previewBadgeStudent && (
         <Modal
           isOpen={!!previewBadgeStudent}
