@@ -12,6 +12,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { ReceiptModal } from '../../components/ui/ReceiptModal';
 import { StudentProfileModal } from '../../components/ui/StudentProfileModal';
+import { StudentSearchSelect } from '../../components/ui/StudentSearchSelect';
 import {
   DollarSign,
   PlusCircle,
@@ -42,6 +43,9 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertTriangle,
+  Users,
+  Filter,
+  UserCheck,
 } from 'lucide-react';
 
 const GRADE_LEVELS: GradeLevel[] = [
@@ -62,7 +66,7 @@ const GRADE_LEVELS: GradeLevel[] = [
 export const FeesView: React.FC = () => {
   const { school, user } = useAuth();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'STRUCTURES' | 'PAYMENTS' | 'INVOICES' | 'DARAJA'>('STRUCTURES');
+  const [activeTab, setActiveTab] = useState<'STRUCTURES' | 'BALANCES' | 'PAYMENTS' | 'INVOICES' | 'DARAJA'>('STRUCTURES');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
@@ -72,6 +76,11 @@ export const FeesView: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('ALL');
   const [selectedTermFilter, setSelectedTermFilter] = useState<string>('Term 1');
+
+  // Student Ledger & Balances Tab Filter States
+  const [balanceSearch, setBalanceSearch] = useState<string>('');
+  const [balanceClassFilter, setBalanceClassFilter] = useState<string>('ALL');
+  const [balanceStatusFilter, setBalanceStatusFilter] = useState<'ALL' | 'ARREARS' | 'CLEARED'>('ALL');
 
   // Daraja STK Push State
   const [isStkModalOpen, setIsStkModalOpen] = useState<boolean>(false);
@@ -603,11 +612,64 @@ export const FeesView: React.FC = () => {
   const totalBilled = invoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
   const totalOutstanding = Math.max(0, totalBilled - totalCollected);
 
+  // Open Payment modal for specific student
+  const handleOpenPayForStudent = (std: Student) => {
+    setPayFormData({
+      studentId: std.id,
+      invoiceId: '',
+      amount: std.totalBalance && std.totalBalance > 0 ? std.totalBalance : 15000,
+      paymentMethod: 'MPESA',
+      transactionReference: '',
+      notes: `School fee installment for ${std.fullName} (${std.currentClass})`,
+    });
+    if (std.parentPhone) {
+      setPayMpesaPhone(std.parentPhone);
+    }
+    setModalStkStatus('IDLE');
+    setModalActiveTxn(null);
+    setIsPayModalOpen(true);
+  };
+
+  // Open STK Push modal for specific student
+  const handleOpenStkForStudent = (std: Student) => {
+    setStkFormData({
+      studentId: std.id,
+      phoneNumber: std.parentPhone || '0712345678',
+      amount: std.totalBalance && std.totalBalance > 0 ? std.totalBalance : 15000,
+      accountReference: std.admissionNumber || 'GLCM-FEES',
+      description: `Fees - ${std.fullName} (${std.currentClass})`,
+    });
+    setIsStkModalOpen(true);
+  };
+
   // Filter Fee Structures
   const filteredFeeStructures = feeStructures.filter((fs) => {
     const matchGrade = selectedGradeFilter === 'ALL' || fs.classLevel === selectedGradeFilter;
     const matchTerm = !selectedTermFilter || fs.term === selectedTermFilter;
     return matchGrade && matchTerm;
+  });
+
+  // Filter Student Balances (Search per class, name, admission #, status)
+  const filteredStudentBalances = students.filter((s) => {
+    // 1. Class filter
+    if (balanceClassFilter !== 'ALL' && s.currentClass !== balanceClassFilter) return false;
+    
+    // 2. Status filter
+    const bal = s.totalBalance || 0;
+    if (balanceStatusFilter === 'ARREARS' && bal <= 0) return false;
+    if (balanceStatusFilter === 'CLEARED' && bal > 0) return false;
+
+    // 3. Search query
+    if (!balanceSearch.trim()) return true;
+    const q = balanceSearch.toLowerCase().trim();
+    return (
+      s.fullName?.toLowerCase().includes(q) ||
+      s.firstName?.toLowerCase().includes(q) ||
+      s.lastName?.toLowerCase().includes(q) ||
+      s.admissionNumber?.toLowerCase().includes(q) ||
+      s.parentPhone?.toLowerCase().includes(q) ||
+      s.parentName?.toLowerCase().includes(q)
+    );
   });
 
   const filteredPayments = payments.filter((p) => {
@@ -737,10 +799,10 @@ export const FeesView: React.FC = () => {
       </div>
 
       {/* Main Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab('STRUCTURES')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'STRUCTURES'
               ? 'bg-blue-900 text-white shadow-sm'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -749,8 +811,18 @@ export const FeesView: React.FC = () => {
           <Layers className="w-3.5 h-3.5" /> Class Fee Structures ({feeStructures.length})
         </button>
         <button
+          onClick={() => setActiveTab('BALANCES')}
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+            activeTab === 'BALANCES'
+              ? 'bg-blue-900 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" /> Learner Fee Ledgers ({students.length})
+        </button>
+        <button
           onClick={() => setActiveTab('PAYMENTS')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'PAYMENTS'
               ? 'bg-blue-900 text-white shadow-sm'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -760,7 +832,7 @@ export const FeesView: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('INVOICES')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'INVOICES'
               ? 'bg-blue-900 text-white shadow-sm'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -770,7 +842,7 @@ export const FeesView: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('DARAJA')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'DARAJA'
               ? 'bg-emerald-600 text-white shadow-sm'
               : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50'
@@ -910,6 +982,293 @@ export const FeesView: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: LEARNER BALANCES & SEARCH */}
+      {activeTab === 'BALANCES' && (
+        <div className="space-y-4">
+          {/* Search & Filter Header */}
+          <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              {/* Search Box */}
+              <div className="relative w-full sm:flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                <input
+                  type="text"
+                  placeholder="Search student by full name, admission number, or parent contact..."
+                  value={balanceSearch}
+                  onChange={(e) => setBalanceSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
+                />
+                {balanceSearch && (
+                  <button
+                    onClick={() => setBalanceSearch('')}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* Class Filter Dropdown */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative w-full sm:w-48">
+                  <select
+                    value={balanceClassFilter}
+                    onChange={(e) => setBalanceClassFilter(e.target.value)}
+                    className="w-full pl-3 pr-8 py-2 text-xs font-semibold border border-slate-200 rounded-xl bg-slate-50 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-900/20"
+                  >
+                    <option value="ALL">All Classes ({students.length})</option>
+                    {GRADE_LEVELS.map((g) => {
+                      const count = students.filter((s) => s.currentClass === g).length;
+                      return (
+                        <option key={g} value={g}>
+                          {g} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Status Filters & Metrics */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setBalanceStatusFilter('ALL')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    balanceStatusFilter === 'ALL'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  All ({students.filter((s) => balanceClassFilter === 'ALL' || s.currentClass === balanceClassFilter).length})
+                </button>
+                <button
+                  onClick={() => setBalanceStatusFilter('ARREARS')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    balanceStatusFilter === 'ARREARS'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  }`}
+                >
+                  <span>In Arrears</span>
+                  <span className="px-1.5 py-0.2 bg-white/30 rounded-full text-[10px]">
+                    {students.filter((s) => (balanceClassFilter === 'ALL' || s.currentClass === balanceClassFilter) && (s.totalBalance || 0) > 0).length}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setBalanceStatusFilter('CLEARED')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    balanceStatusFilter === 'CLEARED'
+                      ? 'bg-emerald-700 text-white'
+                      : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  }`}
+                >
+                  <span>100% Cleared</span>
+                  <span className="px-1.5 py-0.2 bg-white/30 rounded-full text-[10px]">
+                    {students.filter((s) => (balanceClassFilter === 'ALL' || s.currentClass === balanceClassFilter) && (s.totalBalance || 0) <= 0).length}
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3 text-slate-500 font-medium text-[11px]">
+                <span>
+                  Showing <strong className="text-slate-800 font-bold">{filteredStudentBalances.length}</strong> learners
+                </span>
+                <span>•</span>
+                <span>
+                  Total Arrears in View:{' '}
+                  <strong className="text-rose-700 font-bold">
+                    {school?.currencySymbol || 'KSh'}{' '}
+                    {filteredStudentBalances
+                      .reduce((acc, s) => acc + Math.max(0, s.totalBalance || 0), 0)
+                      .toLocaleString()}
+                  </strong>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Student Balances Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+            {filteredStudentBalances.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-xs space-y-2">
+                <Users className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="font-semibold text-slate-600">No learners found matching your criteria</p>
+                <p className="text-[11px]">
+                  Try adjusting your search keyword or selected class filter.
+                </p>
+                {(balanceSearch || balanceClassFilter !== 'ALL' || balanceStatusFilter !== 'ALL') && (
+                  <button
+                    onClick={() => {
+                      setBalanceSearch('');
+                      setBalanceClassFilter('ALL');
+                      setBalanceStatusFilter('ALL');
+                    }}
+                    className="mt-2 text-xs font-bold text-blue-900 hover:underline cursor-pointer"
+                  >
+                    Reset all filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3.5">Learner</th>
+                      <th className="p-3.5">Class / Stream</th>
+                      <th className="p-3.5">Parent / Contact</th>
+                      <th className="p-3.5">Total Invoiced</th>
+                      <th className="p-3.5">Total Paid</th>
+                      <th className="p-3.5">Current Balance</th>
+                      <th className="p-3.5 text-right">Fee Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredStudentBalances.map((std) => {
+                      const balance = std.totalBalance || 0;
+                      const invoiced = std.totalInvoiced || 0;
+                      const paid = std.totalPaid || (invoiced > balance ? invoiced - balance : 0);
+
+                      return (
+                        <tr key={std.id} className="hover:bg-slate-50/70 transition-colors">
+                          {/* Student Info */}
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                                {std.photoUrl ? (
+                                  <img
+                                    src={std.photoUrl}
+                                    alt={std.fullName}
+                                    className="w-full h-full object-cover rounded-lg"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <span>
+                                    {std.firstName?.[0]}
+                                    {std.lastName?.[0]}
+                                  </span>
+                                )}
+                              </div>
+                              <div>
+                                <button
+                                  onClick={() => {
+                                    setSelectedStudentForProfile(std);
+                                    setIsStudentProfileOpen(true);
+                                  }}
+                                  className="font-bold text-slate-900 hover:text-blue-900 hover:underline cursor-pointer block text-left"
+                                >
+                                  {std.fullName}
+                                </button>
+                                <span className="font-mono text-[10px] text-slate-400 block">
+                                  {std.admissionNumber}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Class / Stream */}
+                          <td className="p-3.5 font-medium text-slate-700">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-900 rounded font-semibold text-[11px]">
+                                {std.currentClass}
+                              </span>
+                              {std.stream && (
+                                <span className="text-[10px] text-slate-400">
+                                  Stream {std.stream}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Parent */}
+                          <td className="p-3.5 text-slate-600">
+                            <div className="font-medium text-slate-900 text-[11px]">
+                              {std.parentName || 'Guardian'}
+                            </div>
+                            {std.parentPhone ? (
+                              <div className="flex items-center gap-1 text-slate-500 font-mono text-[10px] mt-0.5">
+                                <Phone className="w-2.5 h-2.5 text-slate-400" />
+                                <span>{std.parentPhone}</span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 italic">No phone</span>
+                            )}
+                          </td>
+
+                          {/* Invoiced */}
+                          <td className="p-3.5 font-medium text-slate-700">
+                            {school?.currencySymbol || 'KSh'} {invoiced.toLocaleString()}
+                          </td>
+
+                          {/* Paid */}
+                          <td className="p-3.5 text-emerald-700 font-semibold">
+                            {school?.currencySymbol || 'KSh'} {paid.toLocaleString()}
+                          </td>
+
+                          {/* Balance */}
+                          <td className="p-3.5">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-lg text-xs font-black ${
+                                balance > 0
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              }`}
+                            >
+                              {balance > 0
+                                ? `${school?.currencySymbol || 'KSh'} ${balance.toLocaleString()}`
+                                : 'Cleared'}
+                            </span>
+                          </td>
+
+                          {/* Fee Actions */}
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Direct Record Payment */}
+                              <button
+                                onClick={() => handleOpenPayForStudent(std)}
+                                className="px-2.5 py-1 text-xs font-bold bg-blue-900 hover:bg-blue-950 text-white rounded-lg cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
+                                title="Record Fee Payment for this student"
+                              >
+                                <Receipt className="w-3 h-3" />
+                                <span>Pay</span>
+                              </button>
+
+                              {/* Direct M-Pesa STK Push */}
+                              <button
+                                onClick={() => handleOpenStkForStudent(std)}
+                                className="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
+                                title="Send M-Pesa Prompt to parent"
+                              >
+                                <Smartphone className="w-3 h-3" />
+                                <span>STK</span>
+                              </button>
+
+                              {/* View Full Ledger */}
+                              <button
+                                onClick={() => {
+                                  setSelectedStudentForProfile(std);
+                                  setIsStudentProfileOpen(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+                                title="View Student Fee Profile & Receipts"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1219,28 +1578,23 @@ export const FeesView: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label className="font-semibold text-slate-700">Select Learner *</label>
-            <select
-              value={stkFormData.studentId}
-              onChange={(e) => {
-                const s = students.find((std) => std.id === e.target.value);
-                setStkFormData({
-                  ...stkFormData,
-                  studentId: e.target.value,
-                  phoneNumber: s?.parentPhone || stkFormData.phoneNumber,
-                  accountReference: s?.admissionNumber || 'GLCM-FEES',
-                });
-              }}
-              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
-            >
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.admissionNumber} • {s.currentClass})
-                </option>
-              ))}
-            </select>
-          </div>
+          <StudentSearchSelect
+            students={students}
+            selectedStudentId={stkFormData.studentId}
+            currencySymbol={school?.currencySymbol || 'KSh'}
+            label="Search & Select Learner (by Class or Name)"
+            required
+            placeholder="Type student name, admission #, or parent phone..."
+            onSelectStudent={(s) => {
+              setStkFormData({
+                ...stkFormData,
+                studentId: s.id,
+                phoneNumber: s.parentPhone || stkFormData.phoneNumber,
+                accountReference: s.admissionNumber || 'GLCM-FEES',
+                amount: s.totalBalance && s.totalBalance > 0 ? s.totalBalance : stkFormData.amount,
+              });
+            }}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1305,29 +1659,27 @@ export const FeesView: React.FC = () => {
         maxWidth="md"
       >
         <form onSubmit={handleRecordPayment} className="space-y-3.5 text-xs">
-          <div>
-            <label className="font-semibold text-slate-700">Select Student *</label>
-            <select
-              value={payFormData.studentId}
-              onChange={(e) => {
-                const sid = e.target.value;
-                setPayFormData({ ...payFormData, studentId: sid });
-                const st = students.find((s) => s.id === sid);
-                if (st?.parentPhone) {
-                  setPayMpesaPhone(st.parentPhone);
-                }
-                setModalStkStatus('IDLE');
-                setModalActiveTxn(null);
-              }}
-              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
-            >
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.admissionNumber} • {s.currentClass})
-                </option>
-              ))}
-            </select>
-          </div>
+          <StudentSearchSelect
+            students={students}
+            selectedStudentId={payFormData.studentId}
+            currencySymbol={school?.currencySymbol || 'KSh'}
+            label="Search & Select Student (Filter by Class or Name)"
+            required
+            placeholder="Type student name, admission #, or parent phone..."
+            onSelectStudent={(st) => {
+              setPayFormData({
+                ...payFormData,
+                studentId: st.id,
+                amount: st.totalBalance && st.totalBalance > 0 ? st.totalBalance : payFormData.amount,
+                notes: `Fee payment for ${st.fullName} (${st.currentClass})`,
+              });
+              if (st.parentPhone) {
+                setPayMpesaPhone(st.parentPhone);
+              }
+              setModalStkStatus('IDLE');
+              setModalActiveTxn(null);
+            }}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1615,20 +1967,15 @@ export const FeesView: React.FC = () => {
       {/* Create Single Invoice Modal */}
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title="Issue Term Fee Invoice" maxWidth="md">
         <form onSubmit={handleCreateInvoice} className="space-y-3 text-xs">
-          <div>
-            <label className="font-semibold text-slate-700">Student *</label>
-            <select
-              value={invFormData.studentId}
-              onChange={(e) => setInvFormData({ ...invFormData, studentId: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
-            >
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.admissionNumber} • {s.currentClass})
-                </option>
-              ))}
-            </select>
-          </div>
+          <StudentSearchSelect
+            students={students}
+            selectedStudentId={invFormData.studentId}
+            currencySymbol={school?.currencySymbol || 'KSh'}
+            label="Search Student to Invoice (by Class or Name)"
+            required
+            placeholder="Type student name, admission #, or parent phone..."
+            onSelectStudent={(s) => setInvFormData({ ...invFormData, studentId: s.id })}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1845,20 +2192,15 @@ export const FeesView: React.FC = () => {
         maxWidth="md"
       >
         <form onSubmit={handleSaveEditPayment} className="space-y-3.5 text-xs">
-          <div>
-            <label className="font-semibold text-slate-700">Student *</label>
-            <select
-              value={editPayFormData.studentId}
-              onChange={(e) => setEditPayFormData({ ...editPayFormData, studentId: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
-            >
-              {students.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.admissionNumber} • {s.currentClass})
-                </option>
-              ))}
-            </select>
-          </div>
+          <StudentSearchSelect
+            students={students}
+            selectedStudentId={editPayFormData.studentId}
+            currencySymbol={school?.currencySymbol || 'KSh'}
+            label="Assigned Student (Search by Class or Name)"
+            required
+            placeholder="Type student name, admission #, or parent phone..."
+            onSelectStudent={(s) => setEditPayFormData({ ...editPayFormData, studentId: s.id })}
+          />
 
           <div className="grid grid-cols-2 gap-3">
             <div>
