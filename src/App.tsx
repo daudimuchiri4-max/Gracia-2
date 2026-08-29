@@ -72,13 +72,25 @@ const normalizeView = (v: string): ActiveView => {
   const map: Record<string, ActiveView> = {
     dashboard: 'DASHBOARD',
     admin: 'DASHBOARD',
+    portal: 'DASHBOARD',
+    erp: 'DASHBOARD',
+    home: 'PUBLIC',
+    public: 'PUBLIC',
+    website: 'PUBLIC',
     students: 'STUDENTS',
     student: 'STUDENTS',
+    pupils: 'STUDENTS',
+    learners: 'STUDENTS',
     admissions: 'ADMISSIONS',
     admission: 'ADMISSIONS',
+    enroll: 'ADMISSIONS',
+    enrollment: 'ADMISSIONS',
     parents: 'PARENTS',
     parent: 'PARENTS',
+    guardians: 'PARENTS',
     staff: 'STAFF',
+    teachers: 'STAFF',
+    employees: 'STAFF',
     users: 'USERS',
     user: 'USERS',
     'user-accounts': 'USERS',
@@ -87,35 +99,57 @@ const normalizeView = (v: string): ActiveView => {
     'users-management': 'USERS',
     academics: 'ACADEMICS',
     academic: 'ACADEMICS',
+    classes: 'ACADEMICS',
     assessments: 'ASSESSMENTS',
     assessment: 'ASSESSMENTS',
+    grading: 'ASSESSMENTS',
+    exams: 'ASSESSMENTS',
     'report-cards': 'REPORT_CARDS',
     report_cards: 'REPORT_CARDS',
     reportcards: 'REPORT_CARDS',
+    reports_cards: 'REPORT_CARDS',
     attendance: 'ATTENDANCE',
+    rollcall: 'ATTENDANCE',
     fees: 'FEES',
     fee: 'FEES',
+    finance: 'FEES',
+    payments: 'FEES',
     pos: 'POS',
     canteen: 'POS',
+    shop: 'POS',
     inventory: 'INVENTORY',
+    assets: 'INVENTORY',
     library: 'LIBRARY',
+    books: 'LIBRARY',
     transport: 'TRANSPORT',
+    bus: 'TRANSPORT',
+    vans: 'TRANSPORT',
     health: 'HEALTH_DISCIPLINE',
     discipline: 'HEALTH_DISCIPLINE',
     health_discipline: 'HEALTH_DISCIPLINE',
     'health-discipline': 'HEALTH_DISCIPLINE',
+    clinic: 'HEALTH_DISCIPLINE',
     communication: 'COMMUNICATION',
+    notices: 'COMMUNICATION',
+    sms: 'COMMUNICATION',
+    messages: 'COMMUNICATION',
     website_cms: 'WEBSITE_CMS',
     'website-cms': 'WEBSITE_CMS',
     cms: 'WEBSITE_CMS',
     roles_permissions: 'ROLES_PERMISSIONS',
     'roles-permissions': 'ROLES_PERMISSIONS',
+    permissions: 'ROLES_PERMISSIONS',
+    roles: 'ROLES_PERMISSIONS',
     reports: 'REPORTS',
+    analytics: 'REPORTS',
     settings: 'SETTINGS',
+    config: 'SETTINGS',
     'saas-billing': 'SAAS_BILLING',
     saas_billing: 'SAAS_BILLING',
     billing: 'SAAS_BILLING',
     subscription: 'SAAS_BILLING',
+    system: 'SAAS_BILLING',
+    'system-owner': 'SAAS_BILLING',
     'teacher-portal': 'TEACHER_PORTAL',
     'parent-portal': 'PARENT_PORTAL',
     'student-portal': 'STUDENT_PORTAL',
@@ -123,26 +157,53 @@ const normalizeView = (v: string): ActiveView => {
     parent_portal: 'PARENT_PORTAL',
     student_portal: 'STUDENT_PORTAL',
     teacher: 'TEACHER_PORTAL',
-    teachers: 'TEACHER_PORTAL',
+    guardian: 'PARENT_PORTAL',
     learner: 'STUDENT_PORTAL',
-    learners: 'STUDENT_PORTAL',
-    public: 'PUBLIC',
   };
 
   const key = v.toLowerCase().trim();
   if (map[key]) return map[key];
-  return (v.toUpperCase() as ActiveView) || 'DASHBOARD';
+  return (v.toUpperCase() as ActiveView) || 'PUBLIC';
 };
 
 const getInitialView = (): ActiveView => {
   if (typeof window === 'undefined') return 'PUBLIC';
-  const path = window.location.pathname.replace(/^\/+/, '').split('/')[0] || '';
-  const hash = window.location.hash.replace(/^#\/?/, '').split('/')[0] || '';
-  const route = path || hash;
-  if (!route || route === '' || route === 'public' || route === 'home') {
-    return 'PUBLIC';
-  }
-  return normalizeView(route);
+
+  // 1. Check URL query params ?view=... or ?page=...
+  try {
+    const searchParams = new URLSearchParams(window.location.search);
+    const paramView = searchParams.get('view') || searchParams.get('page') || searchParams.get('tab');
+    if (paramView) {
+      return normalizeView(paramView);
+    }
+  } catch {}
+
+  // 2. Check Hash #fees or #/students
+  try {
+    const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0].split('/')[0] || '';
+    if (hash && hash !== 'public' && hash !== 'home') {
+      return normalizeView(hash);
+    }
+  } catch {}
+
+  // 3. Check Pathname /students or /fees
+  try {
+    const path = window.location.pathname.replace(/^\/+/, '').split('?')[0].split('/')[0] || '';
+    if (path && path !== 'index.html' && path !== 'public' && path !== 'home' && path !== '') {
+      return normalizeView(path);
+    }
+  } catch {}
+
+  // 4. Check Stored LocalStorage session view
+  try {
+    const savedUser = localStorage.getItem('glc_user');
+    const savedView = localStorage.getItem('glc_active_view');
+    if (savedUser && savedView && savedView !== 'PUBLIC') {
+      return normalizeView(savedView);
+    }
+  } catch {}
+
+  return 'PUBLIC';
 };
 
 const MainAppContent: React.FC = () => {
@@ -151,14 +212,26 @@ const MainAppContent: React.FC = () => {
   const [activeView, setActiveView] = useState<ActiveView>(() => getInitialView());
   const [subscription, setSubscription] = useState<SchoolSubscriptionConfig>(DEFAULT_SUBSCRIPTION_CONFIG);
 
+  // Synchronize on browser Back/Forward/Refresh and Hash change
   React.useEffect(() => {
     const handlePopState = () => {
       const current = getInitialView();
       setActiveView(current);
     };
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
   }, []);
+
+  // Save active view to localStorage whenever it changes
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('glc_active_view', activeView);
+    } catch {}
+  }, [activeView]);
 
   React.useEffect(() => {
     const loadSub = async () => {
@@ -178,6 +251,7 @@ const MainAppContent: React.FC = () => {
     const normalized = normalizeView(view);
     setActiveView(normalized);
     try {
+      localStorage.setItem('glc_active_view', normalized);
       const slug = normalized.toLowerCase().replace(/_/g, '-');
       if (slug === 'public') {
         window.history.pushState({ view: normalized }, '', '/');
@@ -204,10 +278,10 @@ const MainAppContent: React.FC = () => {
           if (targetRole) {
             handleRoleChange(targetRole);
           } else {
-            setActiveView('DASHBOARD');
+            handleNavigate('DASHBOARD');
           }
         }}
-        onOpenCMS={() => setActiveView('WEBSITE_CMS')}
+        onOpenCMS={() => handleNavigate('WEBSITE_CMS')}
       />
     );
   }
@@ -248,7 +322,7 @@ const MainAppContent: React.FC = () => {
       case 'COMMUNICATION':
         return <CommunicationView />;
       case 'WEBSITE_CMS':
-        return <WebsiteCMSView onOpenPublicSite={() => setActiveView('PUBLIC')} />;
+        return <WebsiteCMSView onOpenPublicSite={() => handleNavigate('PUBLIC')} />;
       case 'ROLES_PERMISSIONS':
         return <RolesPermissionsView />;
       case 'USERS':
@@ -280,10 +354,10 @@ const MainAppContent: React.FC = () => {
         subscription={subscription}
         schoolName={school?.name || 'Gracia Learning Centre'}
         onSubscriptionUpdated={(newConfig) => setSubscription(newConfig)}
-        onOpenPublicSite={() => setActiveView('PUBLIC')}
+        onOpenPublicSite={() => handleNavigate('PUBLIC')}
         onOpenSystemOwnerConsole={() => {
           switchRole('SUPER_ADMIN');
-          setActiveView('SAAS_BILLING');
+          handleNavigate('SAAS_BILLING');
         }}
       />
     );
@@ -294,14 +368,14 @@ const MainAppContent: React.FC = () => {
       <AppLayout
         activeView={activeView}
         onNavigate={handleNavigate}
-        onOpenPublicSite={() => setActiveView('PUBLIC')}
+        onOpenPublicSite={() => handleNavigate('PUBLIC')}
       >
         {renderViewContent()}
       </AppLayout>
 
       <InactivityManager
         isActive={activeView !== 'PUBLIC'}
-        onLogoutToPublic={() => setActiveView('PUBLIC')}
+        onLogoutToPublic={() => handleNavigate('PUBLIC')}
       />
     </>
   );
