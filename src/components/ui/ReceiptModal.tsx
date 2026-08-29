@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from './Modal';
 import { Button } from './Button';
-import { Printer, CheckCircle, School as SchoolIcon, Zap, FileText } from 'lucide-react';
+import { Printer, CheckCircle, School as SchoolIcon, Zap, FileText, Edit2, Trash2 } from 'lucide-react';
 import { Payment, School } from '../../types';
 import { printerService } from '../../services/printerService';
 import { PrinterManagerModal } from './PrinterManagerModal';
@@ -11,6 +11,8 @@ interface ReceiptModalProps {
   onClose: () => void;
   payment: Payment | null;
   school: School | null;
+  onEdit?: (payment: Payment) => void;
+  onDelete?: (payment: Payment) => void;
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({
@@ -18,6 +20,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onClose,
   payment,
   school,
+  onEdit,
+  onDelete,
 }) => {
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
 
@@ -113,14 +117,40 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <button
-          onClick={() => setPrinterModalOpen(true)}
-          className="text-xs text-blue-900 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
-        >
-          <Printer className="w-3.5 h-3.5" />
-          <span>Printer Setup / Device Status</span>
-        </button>
+      <div className="mt-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setPrinterModalOpen(true)}
+            className="text-xs text-blue-900 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Printer Setup</span>
+          </button>
+          {onEdit && (
+            <button
+              onClick={() => {
+                onClose();
+                onEdit(payment);
+              }}
+              className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1 font-semibold cursor-pointer px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span>Edit Receipt</span>
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={() => {
+                onClose();
+                onDelete(payment);
+              }}
+              className="text-xs text-rose-600 hover:text-rose-700 flex items-center gap-1 font-semibold cursor-pointer px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Receipt</span>
+            </button>
+          )}
+        </div>
 
         <div className="flex gap-2">
           <Button variant="outline" onClick={onClose}>

@@ -869,6 +869,7 @@ export const StudentsView: React.FC = () => {
         onClose={() => setIsViewModalOpen(false)}
         student={selectedStudent}
         school={school}
+        onRefresh={loadStudents}
         onDelete={(std) => handleOpenDeleteModal(std)}
         onEdit={(std) => {
           setIsViewModalOpen(false);

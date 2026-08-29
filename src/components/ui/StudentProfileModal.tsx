@@ -27,6 +27,7 @@ import {
   ExternalLink,
   MessageSquare,
   Trash2,
+  Edit2,
 } from 'lucide-react';
 import { Student, School, Invoice, Payment, ReportCard, CBCRating } from '../../types';
 import { feeService } from '../../services/feeAndPaymentService';
@@ -42,6 +43,7 @@ interface StudentProfileModalProps {
   onEdit?: (student: Student) => void;
   onDelete?: (student: Student) => void;
   onRecordPayment?: (student: Student) => void;
+  onRefresh?: () => void;
 }
 
 export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
@@ -52,6 +54,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   onEdit,
   onDelete,
   onRecordPayment,
+  onRefresh,
 }) => {
   const [activeTab, setActiveTab] = useState<'bio' | 'academics' | 'fees' | 'attendance' | 'health' | 'idcard'>('bio');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -60,6 +63,22 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   const [loadingData, setLoadingData] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Payment | null>(null);
   const [studentQrCodeUrl, setStudentQrCodeUrl] = useState<string>('');
+
+  // Payment Edit & Delete State
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [isEditPayModalOpen, setIsEditPayModalOpen] = useState(false);
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+  const [editPayFormData, setEditPayFormData] = useState({
+    amount: 0,
+    paymentMethod: 'MPESA' as Payment['paymentMethod'],
+    transactionReference: '',
+    paymentDate: '',
+    notes: '',
+  });
+
+  const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null);
+  const [isDeletePayModalOpen, setIsDeletePayModalOpen] = useState(false);
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
 
   useEffect(() => {
     if (student?.id && school?.id && isOpen) {
@@ -101,6 +120,64 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
       console.error('Error loading student profile details:', e);
     } finally {
       setLoadingData(false);
+    }
+  };
+
+  const handleOpenEditPayment = (p: Payment) => {
+    setEditingPayment(p);
+    setEditPayFormData({
+      amount: p.amount,
+      paymentMethod: p.paymentMethod,
+      transactionReference: p.transactionReference || '',
+      paymentDate: p.paymentDate || (p.createdAt ? p.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]),
+      notes: p.notes || '',
+    });
+    setIsEditPayModalOpen(true);
+  };
+
+  const handleSaveEditPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school?.id || !editingPayment || !student) return;
+
+    setIsUpdatingPayment(true);
+    try {
+      await feeService.updatePayment(school.id, editingPayment.id, {
+        amount: Number(editPayFormData.amount),
+        paymentMethod: editPayFormData.paymentMethod,
+        transactionReference: editPayFormData.transactionReference,
+        paymentDate: editPayFormData.paymentDate,
+        notes: editPayFormData.notes,
+      });
+
+      setIsEditPayModalOpen(false);
+      setEditingPayment(null);
+      await loadStudentDetails();
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      alert('Error updating receipt: ' + err.message);
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
+  const handleOpenDeletePayment = (p: Payment) => {
+    setPaymentToDelete(p);
+    setIsDeletePayModalOpen(true);
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!school?.id || !paymentToDelete) return;
+    setIsDeletingPayment(true);
+    try {
+      await feeService.deletePayment(school.id, paymentToDelete.id);
+      setIsDeletePayModalOpen(false);
+      setPaymentToDelete(null);
+      await loadStudentDetails();
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      alert('Error deleting receipt: ' + err.message);
+    } finally {
+      setIsDeletingPayment(false);
     }
   };
 
@@ -504,7 +581,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                           Ref: <strong className="font-mono">{p.transactionReference}</strong> • Date: {p.paymentDate}
                         </p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <span className="font-bold text-emerald-800 text-sm">
                           {school?.currencySymbol || 'KSh'} {p.amount.toLocaleString()}
                         </span>
@@ -514,6 +591,20 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                           title="Print Receipt"
                         >
                           <Printer className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenEditPayment(p)}
+                          className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg cursor-pointer transition-colors"
+                          title="Edit Receipt"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenDeletePayment(p)}
+                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                          title="Delete Receipt"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -701,7 +792,150 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
           onClose={() => setSelectedReceipt(null)}
           payment={selectedReceipt}
           school={school}
+          onEdit={(p) => handleOpenEditPayment(p)}
+          onDelete={(p) => handleOpenDeletePayment(p)}
         />
+      )}
+
+      {/* Edit Payment Sub-Modal */}
+      {editingPayment && (
+        <Modal
+          isOpen={isEditPayModalOpen}
+          onClose={() => {
+            setIsEditPayModalOpen(false);
+            setEditingPayment(null);
+          }}
+          title={`Edit Payment Receipt (${editingPayment.receiptNumber})`}
+          maxWidth="sm"
+        >
+          <form onSubmit={handleSaveEditPayment} className="space-y-3 text-xs">
+            <div>
+              <label className="font-semibold text-slate-700">Amount ({school?.currencySymbol || 'KSh'}) *</label>
+              <input
+                type="number"
+                required
+                value={editPayFormData.amount}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, amount: Number(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-bold text-emerald-800"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Payment Mode *</label>
+              <select
+                value={editPayFormData.paymentMethod}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, paymentMethod: e.target.value as any })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
+              >
+                <option value="MPESA">M-Pesa (Till / Paybill)</option>
+                <option value="BANK_TRANSFER">Bank Slip / Deposit</option>
+                <option value="CASH">Cash Office</option>
+                <option value="CHEQUE">Banker's Cheque</option>
+                <option value="CARD">Debit / Credit Card</option>
+              </select>
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Reference Code *</label>
+              <input
+                type="text"
+                required
+                value={editPayFormData.transactionReference}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, transactionReference: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Payment Date *</label>
+              <input
+                type="date"
+                required
+                value={editPayFormData.paymentDate}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, paymentDate: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Notes / Remarks</label>
+              <input
+                type="text"
+                value={editPayFormData.notes}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, notes: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  setIsEditPayModalOpen(false);
+                  setEditingPayment(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                type="submit"
+                loading={isUpdatingPayment}
+              >
+                Save Updates
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Delete Payment Sub-Modal */}
+      {paymentToDelete && (
+        <Modal
+          isOpen={isDeletePayModalOpen}
+          onClose={() => {
+            setIsDeletePayModalOpen(false);
+            setPaymentToDelete(null);
+          }}
+          title="Delete Payment Receipt"
+          maxWidth="sm"
+        >
+          <div className="space-y-3 text-xs">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-rose-900">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Delete Receipt {paymentToDelete.receiptNumber}?</p>
+                <p className="text-slate-600 mt-1">
+                  This will delete the receipt of{' '}
+                  <strong className="text-rose-700 font-bold">
+                    {school?.currencySymbol || 'KSh'} {paymentToDelete.amount.toLocaleString()}
+                  </strong>{' '}
+                  and restore the student's outstanding fee balance.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsDeletePayModalOpen(false);
+                  setPaymentToDelete(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={isDeletingPayment}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+                onClick={handleConfirmDeletePayment}
+              >
+                Yes, Delete Receipt
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </Modal>
   );

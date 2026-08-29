@@ -440,6 +440,18 @@ export const feeService = {
     }
   },
 
+  async getPaymentById(schoolId: string, paymentId: string): Promise<Payment | null> {
+    try {
+      const docRef = doc(db, 'schools', schoolId, 'payments', paymentId);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) return null;
+      return { ...snap.data(), id: snap.id } as Payment;
+    } catch (err) {
+      console.error('Error fetching payment by id:', err);
+      return null;
+    }
+  },
+
   async recordPayment(
     schoolId: string,
     paymentData: Omit<Payment, 'id' | 'schoolId' | 'receiptNumber' | 'createdAt'>
@@ -489,5 +501,166 @@ export const feeService = {
     }
 
     return payment;
+  },
+
+  async updatePayment(
+    schoolId: string,
+    paymentId: string,
+    updates: Partial<Payment>
+  ): Promise<Payment> {
+    const docRef = doc(db, 'schools', schoolId, 'payments', paymentId);
+    const currentSnap = await getDoc(docRef);
+    if (!currentSnap.exists()) {
+      throw new Error(`Payment record with ID ${paymentId} not found.`);
+    }
+
+    const currentPayment = { ...currentSnap.data(), id: currentSnap.id } as Payment;
+    const oldAmount = Number(currentPayment.amount) || 0;
+    const newAmount = updates.amount !== undefined ? Number(updates.amount) : oldAmount;
+    const amountDelta = newAmount - oldAmount;
+
+    const oldStudentId = currentPayment.studentId;
+    const newStudentId = updates.studentId || oldStudentId;
+
+    const oldInvoiceId = currentPayment.invoiceId;
+    const newInvoiceId = updates.invoiceId !== undefined ? updates.invoiceId : oldInvoiceId;
+
+    const updatedPayment: Payment = {
+      ...currentPayment,
+      ...updates,
+      amount: newAmount,
+    };
+
+    await setDoc(docRef, cleanForFirestore(updatedPayment), { merge: true });
+
+    // Handle invoice reconciliation
+    if (oldInvoiceId && newInvoiceId && oldInvoiceId === newInvoiceId && amountDelta !== 0) {
+      // Same invoice, amount changed
+      const invRef = doc(db, 'schools', schoolId, 'invoices', oldInvoiceId);
+      const invSnap = await getDoc(invRef);
+      if (invSnap.exists()) {
+        const inv = invSnap.data() as Invoice;
+        const newPaid = Math.max(0, (inv.paidAmount || 0) + amountDelta);
+        const newBalance = Math.max(0, (inv.totalAmount || 0) - newPaid);
+        const newStatus = newBalance === 0 ? 'PAID' : newPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+        await setDoc(
+          invRef,
+          cleanForFirestore({ paidAmount: newPaid, balance: newBalance, status: newStatus }),
+          { merge: true }
+        );
+      }
+    } else if (oldInvoiceId !== newInvoiceId) {
+      // Invoice was changed or detached/attached
+      if (oldInvoiceId) {
+        // Revert old invoice
+        const oldInvRef = doc(db, 'schools', schoolId, 'invoices', oldInvoiceId);
+        const oldInvSnap = await getDoc(oldInvRef);
+        if (oldInvSnap.exists()) {
+          const oldInv = oldInvSnap.data() as Invoice;
+          const newPaid = Math.max(0, (oldInv.paidAmount || 0) - oldAmount);
+          const newBalance = Math.max(0, (oldInv.totalAmount || 0) - newPaid);
+          const newStatus = newBalance === 0 ? 'PAID' : newPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+          await setDoc(
+            oldInvRef,
+            cleanForFirestore({ paidAmount: newPaid, balance: newBalance, status: newStatus }),
+            { merge: true }
+          );
+        }
+      }
+      if (newInvoiceId) {
+        // Apply to new invoice
+        const newInvRef = doc(db, 'schools', schoolId, 'invoices', newInvoiceId);
+        const newInvSnap = await getDoc(newInvRef);
+        if (newInvSnap.exists()) {
+          const newInv = newInvSnap.data() as Invoice;
+          const newPaid = (newInv.paidAmount || 0) + newAmount;
+          const newBalance = Math.max(0, (newInv.totalAmount || 0) - newPaid);
+          const newStatus = newBalance === 0 ? 'PAID' : newPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+          await setDoc(
+            newInvRef,
+            cleanForFirestore({ paidAmount: newPaid, balance: newBalance, status: newStatus }),
+            { merge: true }
+          );
+        }
+      }
+    }
+
+    // Handle student balance adjustments
+    if (oldStudentId === newStudentId) {
+      if (amountDelta !== 0) {
+        const student = await studentService.getStudentById(schoolId, oldStudentId);
+        if (student) {
+          const newStudentBal = Math.max(0, (student.totalBalance || 0) - amountDelta);
+          await studentService.updateStudent(schoolId, oldStudentId, { totalBalance: newStudentBal });
+        }
+      }
+    } else {
+      // Student changed: revert old student and apply to new student
+      const oldStudent = await studentService.getStudentById(schoolId, oldStudentId);
+      if (oldStudent) {
+        await studentService.updateStudent(schoolId, oldStudentId, {
+          totalBalance: (oldStudent.totalBalance || 0) + oldAmount,
+        });
+      }
+      const newStudent = await studentService.getStudentById(schoolId, newStudentId);
+      if (newStudent) {
+        await studentService.updateStudent(schoolId, newStudentId, {
+          totalBalance: Math.max(0, (newStudent.totalBalance || 0) - newAmount),
+        });
+      }
+    }
+
+    return updatedPayment;
+  },
+
+  async deletePayment(schoolId: string, paymentId: string): Promise<void> {
+    const docRef = doc(db, 'schools', schoolId, 'payments', paymentId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return;
+
+    const payment = snap.data() as Payment;
+
+    // 1. Revert invoice if linked
+    if (payment.invoiceId) {
+      try {
+        const invRef = doc(db, 'schools', schoolId, 'invoices', payment.invoiceId);
+        const invSnap = await getDoc(invRef);
+        if (invSnap.exists()) {
+          const inv = invSnap.data() as Invoice;
+          const newPaid = Math.max(0, (inv.paidAmount || 0) - (payment.amount || 0));
+          const newBalance = Math.max(0, (inv.totalAmount || 0) - newPaid);
+          const newStatus = newBalance === 0 ? 'PAID' : newPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+          await setDoc(
+            invRef,
+            cleanForFirestore({
+              paidAmount: newPaid,
+              balance: newBalance,
+              status: newStatus,
+            }),
+            { merge: true }
+          );
+        }
+      } catch (e) {
+        console.warn('Error reverting invoice on payment delete:', e);
+      }
+    }
+
+    // 2. Revert student total balance
+    if (payment.studentId) {
+      try {
+        const student = await studentService.getStudentById(schoolId, payment.studentId);
+        if (student) {
+          const restoredBalance = (student.totalBalance || 0) + (payment.amount || 0);
+          await studentService.updateStudent(schoolId, payment.studentId, {
+            totalBalance: restoredBalance,
+          });
+        }
+      } catch (e) {
+        console.warn('Error restoring student balance on payment delete:', e);
+      }
+    }
+
+    // 3. Delete the payment document
+    await deleteDoc(docRef);
   },
 };

@@ -5,6 +5,7 @@ import { feeService, DEFAULT_CBC_FEE_STRUCTURES } from '../../services/feeAndPay
 import { studentService } from '../../services/studentService';
 import { darajaService, DarajaTransaction } from '../../services/darajaService';
 import { printerService } from '../../services/printerService';
+import { auditService } from '../../services/auditService';
 import { FeeStructure, Invoice, Payment, Student, GradeLevel } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -93,6 +94,24 @@ export const FeesView: React.FC = () => {
     transactionReference: '',
     notes: 'Term 1 school fee installment',
   });
+
+  // Edit Payment Modal
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [isEditPayModalOpen, setIsEditPayModalOpen] = useState(false);
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+  const [editPayFormData, setEditPayFormData] = useState({
+    studentId: '',
+    amount: 0,
+    paymentMethod: 'MPESA' as Payment['paymentMethod'],
+    transactionReference: '',
+    paymentDate: '',
+    notes: '',
+  });
+
+  // Delete Payment Modal
+  const [paymentToDelete, setPaymentToDelete] = useState<Payment | null>(null);
+  const [isDeletePayModalOpen, setIsDeletePayModalOpen] = useState(false);
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
 
   // Direct STK Push Prompt State within Payment Modal
   const [payMpesaPhone, setPayMpesaPhone] = useState('0712345678');
@@ -324,6 +343,98 @@ export const FeesView: React.FC = () => {
       await loadFinanceData();
     } catch (e: any) {
       showToast('Error recording payment: ' + e.message, 'error');
+    }
+  };
+
+  const handleOpenEditPayment = (payment: Payment) => {
+    setEditingPayment(payment);
+    setEditPayFormData({
+      studentId: payment.studentId,
+      amount: payment.amount,
+      paymentMethod: payment.paymentMethod,
+      transactionReference: payment.transactionReference || '',
+      paymentDate: payment.paymentDate || (payment.createdAt ? payment.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]),
+      notes: payment.notes || '',
+    });
+    setIsEditPayModalOpen(true);
+  };
+
+  const handleSaveEditPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!school?.id || !editingPayment) return;
+
+    const student = students.find((s) => s.id === editPayFormData.studentId);
+    if (!student) {
+      showToast('Please select a student', 'error');
+      return;
+    }
+
+    setIsUpdatingPayment(true);
+    try {
+      const oldAmount = editingPayment.amount;
+      const updated = await feeService.updatePayment(school.id, editingPayment.id, {
+        studentId: student.id,
+        studentName: student.fullName,
+        admissionNumber: student.admissionNumber,
+        parentName: student.parentName,
+        parentPhone: student.parentPhone,
+        amount: Number(editPayFormData.amount),
+        paymentMethod: editPayFormData.paymentMethod,
+        transactionReference: editPayFormData.transactionReference,
+        paymentDate: editPayFormData.paymentDate,
+        notes: editPayFormData.notes,
+      });
+
+      if (user) {
+        await auditService.logAction(
+          school.id,
+          { id: user.id, name: user.fullName, role: user.role },
+          'UPDATE_PAYMENT',
+          'FINANCE',
+          `Updated receipt ${editingPayment.receiptNumber} for ${student.fullName} (${student.admissionNumber}). Amount: ${school?.currencySymbol || 'KSh'} ${oldAmount.toLocaleString()} -> ${school?.currencySymbol || 'KSh'} ${updated.amount.toLocaleString()}. Ref: ${updated.transactionReference}`
+        );
+      }
+
+      showToast(`Receipt ${editingPayment.receiptNumber} updated successfully!`, 'success');
+      setIsEditPayModalOpen(false);
+      setEditingPayment(null);
+      await loadFinanceData();
+    } catch (err: any) {
+      showToast('Error updating payment: ' + err.message, 'error');
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
+  const handleOpenDeletePayment = (payment: Payment) => {
+    setPaymentToDelete(payment);
+    setIsDeletePayModalOpen(true);
+  };
+
+  const handleConfirmDeletePayment = async () => {
+    if (!school?.id || !paymentToDelete) return;
+    setIsDeletingPayment(true);
+    try {
+      await feeService.deletePayment(school.id, paymentToDelete.id);
+
+      if (user) {
+        await auditService.logAction(
+          school.id,
+          { id: user.id, name: user.fullName, role: user.role },
+          'DELETE_PAYMENT',
+          'FINANCE',
+          `Deleted receipt ${paymentToDelete.receiptNumber} of ${school?.currencySymbol || 'KSh'} ${paymentToDelete.amount.toLocaleString()} for student ${paymentToDelete.studentName} (${paymentToDelete.admissionNumber}). Outstanding balance reverted.`
+        );
+      }
+
+      showToast(`Receipt ${paymentToDelete.receiptNumber} deleted and fee balance reverted.`, 'success');
+      setIsDeletePayModalOpen(false);
+      setPaymentToDelete(null);
+      await loadFinanceData();
+    } catch (err: any) {
+      showToast('Error deleting payment: ' + err.message, 'error');
+    } finally {
+      setIsDeletingPayment(false);
     }
   };
 
@@ -867,16 +978,32 @@ export const FeesView: React.FC = () => {
                         {school?.currencySymbol || 'KSh'} {p.amount.toLocaleString()}
                       </td>
                       <td className="p-3.5 text-right">
-                        <button
-                          onClick={() => {
-                            setSelectedPayment(p);
-                            setIsReceiptModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
-                          title="Print Receipt"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedPayment(p);
+                              setIsReceiptModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer transition-colors"
+                            title="Print Official Receipt"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditPayment(p)}
+                            className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg cursor-pointer transition-colors"
+                            title="Edit Payment / Receipt"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenDeletePayment(p)}
+                            className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                            title="Delete Payment / Receipt"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1707,12 +1834,186 @@ export const FeesView: React.FC = () => {
         </Modal>
       )}
 
+      {/* Edit Payment / Receipt Modal */}
+      <Modal
+        isOpen={isEditPayModalOpen}
+        onClose={() => {
+          setIsEditPayModalOpen(false);
+          setEditingPayment(null);
+        }}
+        title={`Edit Payment Receipt (${editingPayment?.receiptNumber || ''})`}
+        maxWidth="md"
+      >
+        <form onSubmit={handleSaveEditPayment} className="space-y-3.5 text-xs">
+          <div>
+            <label className="font-semibold text-slate-700">Student *</label>
+            <select
+              value={editPayFormData.studentId}
+              onChange={(e) => setEditPayFormData({ ...editPayFormData, studentId: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
+            >
+              {students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.fullName} ({s.admissionNumber} • {s.currentClass})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-semibold text-slate-700">Amount Paid ({school?.currencySymbol || 'KSh'}) *</label>
+              <input
+                type="number"
+                required
+                value={editPayFormData.amount}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, amount: Number(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-bold text-emerald-800"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Payment Mode *</label>
+              <select
+                value={editPayFormData.paymentMethod}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, paymentMethod: e.target.value as any })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
+              >
+                <option value="MPESA">M-Pesa (Till / Paybill)</option>
+                <option value="BANK_TRANSFER">Bank Slip / Deposit</option>
+                <option value="CASH">Cash Office</option>
+                <option value="CHEQUE">Banker's Cheque</option>
+                <option value="CARD">Debit / Credit Card</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-semibold text-slate-700">Transaction Reference Code *</label>
+              <input
+                type="text"
+                required
+                value={editPayFormData.transactionReference}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, transactionReference: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Payment Date *</label>
+              <input
+                type="date"
+                required
+                value={editPayFormData.paymentDate}
+                onChange={(e) => setEditPayFormData({ ...editPayFormData, paymentDate: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="font-semibold text-slate-700">Payment Description / Remarks</label>
+            <input
+              type="text"
+              value={editPayFormData.notes}
+              onChange={(e) => setEditPayFormData({ ...editPayFormData, notes: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+            />
+          </div>
+
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-amber-800 text-[11px]">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span>
+              Updating payment details will automatically recalculate and reconcile the student's fee ledger and linked invoice balances.
+            </span>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setIsEditPayModalOpen(false);
+                setEditingPayment(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              loading={isUpdatingPayment}
+              className="bg-blue-900 hover:bg-blue-800 font-bold"
+            >
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Payment / Receipt Confirmation Modal */}
+      {paymentToDelete && (
+        <Modal
+          isOpen={isDeletePayModalOpen}
+          onClose={() => {
+            setIsDeletePayModalOpen(false);
+            setPaymentToDelete(null);
+          }}
+          title="Delete Payment Receipt"
+          maxWidth="sm"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-sm">Delete Receipt & Revert Balance?</p>
+                <p className="text-slate-600 leading-relaxed">
+                  Are you sure you want to permanently delete receipt{' '}
+                  <strong className="text-slate-900">{paymentToDelete.receiptNumber}</strong> of{' '}
+                  <strong className="text-rose-700 font-black">
+                    {school?.currencySymbol || 'KSh'} {paymentToDelete.amount.toLocaleString()}
+                  </strong>{' '}
+                  for <strong className="text-slate-900">{paymentToDelete.studentName}</strong> ({paymentToDelete.admissionNumber})?
+                </p>
+                <p className="text-[11px] text-rose-700 font-semibold mt-1">
+                  • The student's outstanding fee balance will be increased by {school?.currencySymbol || 'KSh'} {paymentToDelete.amount.toLocaleString()}.<br />
+                  • Linked invoice balances will be restored.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsDeletePayModalOpen(false);
+                  setPaymentToDelete(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={isDeletingPayment}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+                onClick={handleConfirmDeletePayment}
+              >
+                Yes, Delete Receipt
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Official Printable Receipt Modal */}
       <ReceiptModal
         isOpen={isReceiptModalOpen}
         onClose={() => setIsReceiptModalOpen(false)}
         payment={selectedPayment}
         school={school}
+        onEdit={(p) => handleOpenEditPayment(p)}
+        onDelete={(p) => handleOpenDeletePayment(p)}
       />
 
       {/* Student Profile Modal Trigger */}
