@@ -162,11 +162,16 @@ export const AttendanceView: React.FC = () => {
           if (ent.status === 'PRESENT' || ent.status === 'LATE') {
             const timeMatch = ent.remarks?.match(/\((.*?)\)/);
             const timeVal = timeMatch ? timeMatch[1] : 'Morning Session';
-            map[ent.studentId] = {
+            const checkData = {
               time: timeVal,
               status: ent.status,
               studentName: ent.studentName,
             };
+            map[ent.studentId] = checkData;
+            if (ent.admissionNumber) {
+              map[ent.admissionNumber] = checkData;
+              map[ent.admissionNumber.toLowerCase()] = checkData;
+            }
             feed.push({
               id: `rec-${ent.studentId}-${Date.now()}`,
               studentId: ent.studentId,
@@ -333,6 +338,24 @@ export const AttendanceView: React.FC = () => {
         recordedBy: user?.fullName || 'Teacher on Duty',
         entries,
       });
+
+      // If saving today's roll call, synchronize checkedInTodayMap
+      const todayDate = new Date().toISOString().split('T')[0];
+      if (selectedDate === todayDate) {
+        const newCheckIns: Record<string, { time: string; status: 'PRESENT' | 'LATE'; studentName: string }> = {};
+        entries.forEach((ent) => {
+          if (ent.status === 'PRESENT' || ent.status === 'LATE') {
+            const timeVal = 'Class Roll Call';
+            const data = { time: timeVal, status: ent.status, studentName: ent.studentName };
+            newCheckIns[ent.studentId] = data;
+            if (ent.admissionNumber) {
+              newCheckIns[ent.admissionNumber] = data;
+              newCheckIns[ent.admissionNumber.toLowerCase()] = data;
+            }
+          }
+        });
+        setCheckedInTodayMap((prev) => ({ ...prev, ...newCheckIns }));
+      }
 
       showToast(
         `Attendance for ${selectedClass} (${selectedStream}) saved successfully!`,
@@ -687,10 +710,12 @@ export const AttendanceView: React.FC = () => {
       // Check if student has ALREADY checked in today
       const alreadyChecked =
         checkedInTodayMap[matched.id] ||
+        (matched.admissionNumber ? checkedInTodayMap[matched.admissionNumber] : undefined) ||
+        (matched.admissionNumber ? checkedInTodayMap[matched.admissionNumber.toLowerCase()] : undefined) ||
         scanFeed.find(
           (f) =>
             f.studentId === matched.id ||
-            f.admissionNumber.toLowerCase().trim() === matched.admissionNumber.toLowerCase().trim()
+            (matched.admissionNumber && f.admissionNumber?.toLowerCase().trim() === matched.admissionNumber.toLowerCase().trim())
         );
 
       const firstName = matched.firstName || (matched.fullName ? matched.fullName.trim().split(/\s+/)[0] : 'Learner');
@@ -705,13 +730,13 @@ export const AttendanceView: React.FC = () => {
           status: alreadyChecked.status || 'PRESENT',
         });
 
-        // Warning tone for duplicate
+        // Warning tone for duplicate scan
         playBeep(false);
 
-        // Standard English voice: "[First Name] is already checked in."
-        speakGreeting(`${firstName} is already checked in.`);
+        // Voice announcement: "Student already checked in"
+        speakGreeting(`${matched.fullName || firstName}, student already checked in.`);
 
-        showToast(`${matched.fullName} has ALREADY checked in today (${checkedTime}).`, 'warning');
+        showToast(`${matched.fullName} (${matched.admissionNumber}): Student already checked in today (${checkedTime}). No duplicate recorded.`, 'warning');
         return;
       }
 
@@ -732,13 +757,15 @@ export const AttendanceView: React.FC = () => {
       speakGreeting(`Welcome to Gracia Learning Centre, ${firstName}.`);
 
       // Update in-memory tracking map so subsequent scans immediately know
+      const checkInData = {
+        time: timeStr,
+        status: (isLate ? 'LATE' : 'PRESENT') as 'PRESENT' | 'LATE',
+        studentName: matched.fullName,
+      };
       setCheckedInTodayMap((prev) => ({
         ...prev,
-        [matched.id]: {
-          time: timeStr,
-          status: isLate ? 'LATE' : 'PRESENT',
-          studentName: matched.fullName,
-        },
+        [matched.id]: checkInData,
+        ...(matched.admissionNumber ? { [matched.admissionNumber]: checkInData, [matched.admissionNumber.toLowerCase()]: checkInData } : {}),
       }));
 
       setScanFeed((prev) => [
