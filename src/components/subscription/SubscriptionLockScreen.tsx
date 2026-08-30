@@ -76,18 +76,33 @@ export const SubscriptionLockScreen: React.FC<SubscriptionLockScreenProps> = ({
       {/* Main Lock Card */}
       <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6 text-center relative overflow-hidden">
         {/* Lock Icon Badge */}
-        <div className="w-16 h-16 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center mx-auto shadow-inner">
+        <div className={`w-16 h-16 rounded-3xl ${subscription.status === 'SUSPENDED' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-rose-500/10 border-rose-500/30 text-rose-400'} border flex items-center justify-center mx-auto shadow-inner`}>
           <Lock className="w-8 h-8" />
         </div>
 
         {/* Institution Title */}
         <div className="space-y-2">
-          <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">
-            {schoolName || 'Gracia Learning Centre'}
-          </span>
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-[11px] font-bold tracking-widest text-slate-400 uppercase">
+              {schoolName || 'Gracia Learning Centre'}
+            </span>
+            {subscription.status === 'SUSPENDED' && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                Suspended
+              </span>
+            )}
+          </div>
           <h1 className="text-xl sm:text-2xl font-bold text-white leading-snug">
-            Your system subscription has expired. Please contact your system provider.
+            {subscription.status === 'SUSPENDED'
+              ? 'Your system subscription has been suspended. Please contact your system provider.'
+              : 'Your system subscription has expired. Please contact your system provider.'}
           </h1>
+          {subscription.lockedReason && (
+            <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-slate-300 text-left">
+              <span className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">Provider Notice:</span>
+              <p>{subscription.lockedReason}</p>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}

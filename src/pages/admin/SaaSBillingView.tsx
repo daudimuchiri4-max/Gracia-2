@@ -49,7 +49,7 @@ export const SaaSBillingView: React.FC = () => {
   // Manual payment state
   const [manualAmount, setManualAmount] = useState<number>(7500);
   const [manualMonths, setManualMonths] = useState<number>(1);
-  const [manualMethod, setManualMethod] = useState<'MPESA_STK' | 'MPESA_MANUAL' | 'BANK_TRANSFER' | 'CASH'>('MPESA_MANUAL');
+  const [manualMethod, setManualMethod] = useState<'MPESA_MANUAL' | 'BANK_TRANSFER' | 'CASH'>('MPESA_MANUAL');
   const [manualRef, setManualRef] = useState<string>('');
   const [manualNotes, setManualNotes] = useState<string>('');
 
@@ -590,7 +590,6 @@ export const SaaSBillingView: React.FC = () => {
               className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-semibold text-slate-900"
             >
               <option value="MPESA_MANUAL">Lipa na M-Pesa (Buy Goods / Till)</option>
-              <option value="MPESA_STK">M-Pesa STK Push</option>
               <option value="BANK_TRANSFER">Direct Bank Wire / EFT</option>
               <option value="CASH">Cash Deposit</option>
             </select>

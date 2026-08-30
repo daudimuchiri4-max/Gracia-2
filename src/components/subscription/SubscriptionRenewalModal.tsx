@@ -38,11 +38,9 @@ export const SubscriptionRenewalModal: React.FC<SubscriptionRenewalModalProps> =
 }) => {
   const { showToast } = useToast();
   const [selectedMonths, setSelectedMonths] = useState<number>(1);
-  const [paymentTab, setPaymentTab] = useState<'STK' | 'MANUAL' | 'BANK'>('STK');
-  const [phoneNumber, setPhoneNumber] = useState<string>('0712345678');
+  const [paymentTab, setPaymentTab] = useState<'MANUAL' | 'BANK'>('MANUAL');
   const [mpesaCode, setMpesaCode] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
-  const [stkSent, setStkSent] = useState<boolean>(false);
   const [stkSuccess, setStkSuccess] = useState<boolean>(false);
   const [lastInvoice, setLastInvoice] = useState<SubscriptionInvoice | null>(null);
 
@@ -54,48 +52,6 @@ export const SubscriptionRenewalModal: React.FC<SubscriptionRenewalModalProps> =
   // Discount options
   const discountPercent = selectedMonths === 12 ? 15 : selectedMonths === 6 ? 10 : selectedMonths === 3 ? 5 : 0;
   const finalPayable = Math.round(totalAmount * (1 - discountPercent / 100));
-
-  const handleMpesaStkPush = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!phoneNumber.trim()) {
-      showToast('Please enter a valid M-Pesa phone number.', 'error');
-      return;
-    }
-
-    setLoading(true);
-    setStkSent(true);
-
-    try {
-      // Simulate real-time Safaricom Daraja STK push handshake
-      await new Promise((res) => setTimeout(res, 2000));
-
-      const generatedMpesaCode = `QHX${Math.floor(100000 + Math.random() * 900000)}K`;
-
-      const { config, invoice } = await subscriptionService.processMonthlyPayment(
-        'GLCM',
-        {
-          amount: finalPayable,
-          paymentMethod: 'MPESA_STK',
-          paymentReference: generatedMpesaCode,
-          monthsToAdd: selectedMonths,
-          notes: `Online renewal (${phoneNumber}) for ${selectedMonths} month(s).`,
-        }
-      );
-
-      setStkSuccess(true);
-      setLastInvoice(invoice);
-      onSubscriptionUpdated(config);
-      showToast(
-        `Payment of KES ${finalPayable.toLocaleString()} received via M-Pesa (${generatedMpesaCode})! System renewed for ${selectedMonths} month(s).`,
-        'success'
-      );
-    } catch (err: any) {
-      console.error('Subscription STK payment error:', err);
-      showToast('Payment verification failed. Please check phone number or try manual entry.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleManualMpesaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,7 +143,6 @@ export const SubscriptionRenewalModal: React.FC<SubscriptionRenewalModalProps> =
                 size="md"
                 onClick={() => {
                   setStkSuccess(false);
-                  setStkSent(false);
                   onClose();
                 }}
                 className="font-bold text-xs"
@@ -277,19 +232,6 @@ export const SubscriptionRenewalModal: React.FC<SubscriptionRenewalModalProps> =
             <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200">
               <button
                 type="button"
-                onClick={() => setPaymentTab('STK')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                  paymentTab === 'STK'
-                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Lipa na M-Pesa (Instant STK)</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setPaymentTab('MANUAL')}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                   paymentTab === 'MANUAL'
@@ -314,54 +256,6 @@ export const SubscriptionRenewalModal: React.FC<SubscriptionRenewalModalProps> =
                 <span>Bank Transfer</span>
               </button>
             </div>
-
-            {/* M-Pesa STK Tab */}
-            {paymentTab === 'STK' && (
-              <form onSubmit={handleMpesaStkPush} className="space-y-3.5 pt-1">
-                <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-emerald-950">
-                    <span>Developer Payout Till / Paybill:</span>
-                    <span className="font-mono bg-emerald-100 px-2 py-0.5 rounded text-emerald-900">
-                      {payout.mpesaType === 'TILL' ? 'Buy Goods Till: ' : 'Paybill: '} {payout.mpesaNumber}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-emerald-800 leading-relaxed">
-                    An instant STK Push prompt will be sent directly to your phone for{' '}
-                    <strong>KES {finalPayable.toLocaleString()}</strong>. Enter your Safaricom M-Pesa PIN to complete payment.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Your M-Pesa Phone Number:
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="e.g. 0712345678 or 254712345678"
-                      required
-                      className="w-full px-3.5 py-2.5 pl-9 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-900 focus:border-transparent"
-                    />
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="md"
-                  loading={loading}
-                  icon={<Sparkles className="w-4 h-4 text-amber-300" />}
-                  className="w-full font-bold text-xs py-3 bg-emerald-600 hover:bg-emerald-700 border-emerald-700"
-                >
-                  {loading
-                    ? 'Prompting Phone & Verifying M-Pesa...'
-                    : `Send M-Pesa Prompt (Pay KES ${finalPayable.toLocaleString()})`}
-                </Button>
-              </form>
-            )}
 
             {/* Manual M-Pesa Code Input Tab */}
             {paymentTab === 'MANUAL' && (

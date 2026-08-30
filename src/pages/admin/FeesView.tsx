@@ -3,7 +3,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { feeService, DEFAULT_CBC_FEE_STRUCTURES } from '../../services/feeAndPaymentService';
 import { studentService } from '../../services/studentService';
-import { darajaService, DarajaTransaction } from '../../services/darajaService';
 import { printerService } from '../../services/printerService';
 import { auditService } from '../../services/auditService';
 import { FeeStructure, Invoice, Payment, Student, GradeLevel } from '../../types';
@@ -13,6 +12,7 @@ import { Modal } from '../../components/ui/Modal';
 import { ReceiptModal } from '../../components/ui/ReceiptModal';
 import { StudentProfileModal } from '../../components/ui/StudentProfileModal';
 import { StudentSearchSelect } from '../../components/ui/StudentSearchSelect';
+import { BatchBillingModal } from '../../components/ui/BatchBillingModal';
 import {
   DollarSign,
   PlusCircle,
@@ -66,12 +66,11 @@ const GRADE_LEVELS: GradeLevel[] = [
 export const FeesView: React.FC = () => {
   const { school, user } = useAuth();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'STRUCTURES' | 'BALANCES' | 'PAYMENTS' | 'INVOICES' | 'DARAJA'>('STRUCTURES');
+  const [activeTab, setActiveTab] = useState<'STRUCTURES' | 'BALANCES' | 'PAYMENTS' | 'INVOICES'>('STRUCTURES');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-  const [darajaTransactions, setDarajaTransactions] = useState<DarajaTransaction[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [search, setSearch] = useState<string>('');
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('ALL');
@@ -81,17 +80,6 @@ export const FeesView: React.FC = () => {
   const [balanceSearch, setBalanceSearch] = useState<string>('');
   const [balanceClassFilter, setBalanceClassFilter] = useState<string>('ALL');
   const [balanceStatusFilter, setBalanceStatusFilter] = useState<'ALL' | 'ARREARS' | 'CLEARED'>('ALL');
-
-  // Daraja STK Push State
-  const [isStkModalOpen, setIsStkModalOpen] = useState<boolean>(false);
-  const [isStkSending, setIsStkSending] = useState<boolean>(false);
-  const [stkFormData, setStkFormData] = useState({
-    studentId: '',
-    phoneNumber: '0712345678',
-    amount: 15000,
-    accountReference: 'GLCM-FEES',
-    description: 'School Fee Installment',
-  });
 
   // Payment Recording Modal
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -122,12 +110,6 @@ export const FeesView: React.FC = () => {
   const [isDeletePayModalOpen, setIsDeletePayModalOpen] = useState(false);
   const [isDeletingPayment, setIsDeletingPayment] = useState(false);
 
-  // Direct STK Push Prompt State within Payment Modal
-  const [payMpesaPhone, setPayMpesaPhone] = useState('0712345678');
-  const [isModalStkSending, setIsModalStkSending] = useState(false);
-  const [modalStkStatus, setModalStkStatus] = useState<'IDLE' | 'SENT' | 'CONFIRMED' | 'FAILED'>('IDLE');
-  const [modalActiveTxn, setModalActiveTxn] = useState<DarajaTransaction | null>(null);
-
   // Receipt Modal
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
@@ -135,6 +117,11 @@ export const FeesView: React.FC = () => {
   // Student Profile Modal
   const [selectedStudentForProfile, setSelectedStudentForProfile] = useState<Student | null>(null);
   const [isStudentProfileOpen, setIsStudentProfileOpen] = useState(false);
+
+  // Batch Billing Modal
+  const [isBatchBillingOpen, setIsBatchBillingOpen] = useState(false);
+  const [batchBillingScope, setBatchBillingScope] = useState<'ALL' | 'GRADE' | 'SELECTED'>('ALL');
+  const [batchBillingGrade, setBatchBillingGrade] = useState<GradeLevel>('Grade 1');
 
   // New Invoice Modal
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -178,145 +165,25 @@ export const FeesView: React.FC = () => {
   const loadFinanceData = async () => {
     setLoading(true);
     try {
-      const [payList, invList, fsList, stdList, darajaList] = await Promise.all([
+      const [payList, invList, fsList, stdList] = await Promise.all([
         feeService.getPayments(school!.id),
         feeService.getInvoices(school!.id),
         feeService.getFeeStructures(school!.id),
         studentService.getStudents(school!.id),
-        darajaService.getTransactions(school!.id),
       ]);
       setPayments(payList);
       setInvoices(invList);
       setFeeStructures(fsList);
       setStudents(stdList);
-      setDarajaTransactions(darajaList);
 
       if (stdList.length > 0 && !payFormData.studentId) {
         setPayFormData((p) => ({ ...p, studentId: stdList[0].id }));
         setInvFormData((p) => ({ ...p, studentId: stdList[0].id }));
-        setStkFormData((p) => ({
-          ...p,
-          studentId: stdList[0].id,
-          phoneNumber: stdList[0].parentPhone || '0712345678',
-          accountReference: stdList[0].admissionNumber,
-        }));
       }
     } catch (e: any) {
       showToast('Error loading finance records: ' + e.message, 'error');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSendStkPush = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!school?.id) return;
-    setIsStkSending(true);
-    try {
-      const student = students.find((s) => s.id === stkFormData.studentId);
-      const txn = await darajaService.initiateStkPush(school.id, {
-        phoneNumber: stkFormData.phoneNumber,
-        amount: Number(stkFormData.amount),
-        accountReference: stkFormData.accountReference || student?.admissionNumber || 'GLCM-FEES',
-        transactionDesc: stkFormData.description || 'School Fee Payment',
-        studentId: stkFormData.studentId,
-      });
-
-      showToast(txn.customerMessage, 'success');
-      setIsStkModalOpen(false);
-      await loadFinanceData();
-    } catch (err: any) {
-      showToast('Error initiating M-Pesa STK Push: ' + err.message, 'error');
-    } finally {
-      setIsStkSending(false);
-    }
-  };
-
-  const handleSimulatePaymentConfirmation = async (txn: DarajaTransaction) => {
-    if (!school?.id) return;
-    try {
-      const updated = await darajaService.simulatePaymentSuccess(school.id, txn.id);
-      
-      // Auto record as official fee payment
-      const student = students.find((s) => s.id === txn.studentId);
-      if (student) {
-        await feeService.recordPayment(school.id, {
-          studentId: student.id,
-          studentName: student.fullName,
-          admissionNumber: student.admissionNumber,
-          parentName: student.parentName,
-          parentPhone: txn.phoneNumber,
-          amount: txn.amount,
-          paymentDate: new Date().toISOString().split('T')[0],
-          paymentMethod: 'MPESA',
-          transactionReference: updated.mpesaReceiptNumber || 'MPESA-ONLINE',
-          cashierName: 'Safaricom Daraja Gateway',
-          cashierId: 'daraja_gateway',
-          notes: `Lipa na M-Pesa Online STK Push (${txn.accountReference})`,
-        });
-      }
-
-      showToast(
-        `M-Pesa payment ${updated.mpesaReceiptNumber} confirmed and credited to student fee balance!`,
-        'success'
-      );
-      await loadFinanceData();
-    } catch (err: any) {
-      showToast('Error confirming payment: ' + err.message, 'error');
-    }
-  };
-
-  const handleTriggerModalStkPush = async () => {
-    if (!school?.id) return;
-    const student = students.find((s) => s.id === payFormData.studentId);
-    if (!student) {
-      showToast('Please select a student first', 'warning');
-      return;
-    }
-    if (!payMpesaPhone || payMpesaPhone.trim().length < 9) {
-      showToast('Please enter a valid M-Pesa phone number (e.g. 0712345678)', 'warning');
-      return;
-    }
-
-    setIsModalStkSending(true);
-    try {
-      const formattedPhone = darajaService.normalizePhoneNumber(payMpesaPhone);
-      const txn = await darajaService.initiateStkPush(school.id, {
-        phoneNumber: formattedPhone,
-        amount: Number(payFormData.amount),
-        accountReference: student.admissionNumber || 'GLCM-FEES',
-        transactionDesc: payFormData.notes || 'School Fee Payment',
-        studentId: student.id,
-        invoiceId: payFormData.invoiceId || undefined,
-      });
-
-      setModalActiveTxn(txn);
-      setModalStkStatus('SENT');
-      showToast(`M-Pesa STK Push prompt sent to ${formattedPhone}! Parent prompted for PIN.`, 'success');
-      loadFinanceData();
-    } catch (err: any) {
-      setModalStkStatus('FAILED');
-      showToast('Error initiating STK Push: ' + err.message, 'error');
-    } finally {
-      setIsModalStkSending(false);
-    }
-  };
-
-  const handleConfirmModalStk = async () => {
-    if (!school?.id || !modalActiveTxn) return;
-    try {
-      const updated = await darajaService.simulatePaymentSuccess(school.id, modalActiveTxn.id);
-      const mpesaCode = updated.mpesaReceiptNumber || `QK${Math.floor(100000 + Math.random() * 900000)}`;
-      
-      setPayFormData((prev) => ({
-        ...prev,
-        transactionReference: mpesaCode,
-      }));
-      setModalStkStatus('CONFIRMED');
-      showToast(`M-Pesa PIN confirmed! Receipt code: ${mpesaCode}`, 'success');
-      loadFinanceData();
-    } catch (err: any) {
-      showToast('Error confirming payment: ' + err.message, 'error');
     }
   };
 
@@ -622,24 +489,7 @@ export const FeesView: React.FC = () => {
       transactionReference: '',
       notes: `School fee installment for ${std.fullName} (${std.currentClass})`,
     });
-    if (std.parentPhone) {
-      setPayMpesaPhone(std.parentPhone);
-    }
-    setModalStkStatus('IDLE');
-    setModalActiveTxn(null);
     setIsPayModalOpen(true);
-  };
-
-  // Open STK Push modal for specific student
-  const handleOpenStkForStudent = (std: Student) => {
-    setStkFormData({
-      studentId: std.id,
-      phoneNumber: std.parentPhone || '0712345678',
-      amount: std.totalBalance && std.totalBalance > 0 ? std.totalBalance : 15000,
-      accountReference: std.admissionNumber || 'GLCM-FEES',
-      description: `Fees - ${std.fullName} (${std.currentClass})`,
-    });
-    setIsStkModalOpen(true);
   };
 
   // Filter Fee Structures
@@ -708,6 +558,18 @@ export const FeesView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-blue-900 border-blue-200 bg-blue-50/70 hover:bg-blue-100 hover:border-blue-300 font-bold shadow-xs"
+            icon={<Send className="w-4 h-4 text-blue-900" />}
+            onClick={() => {
+              setBatchBillingScope('ALL');
+              setIsBatchBillingOpen(true);
+            }}
+          >
+            Bill All Students
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -840,16 +702,6 @@ export const FeesView: React.FC = () => {
         >
           <FileText className="w-3.5 h-3.5" /> Student Invoices ({invoices.length})
         </button>
-        <button
-          onClick={() => setActiveTab('DARAJA')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-            activeTab === 'DARAJA'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50'
-          }`}
-        >
-          <Smartphone className="w-3.5 h-3.5" /> Safaricom Daraja M-Pesa ({darajaTransactions.length})
-        </button>
       </div>
 
       {/* TAB 1: FEE STRUCTURES */}
@@ -885,6 +737,18 @@ export const FeesView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-blue-900 border-blue-200 bg-white hover:bg-blue-50 font-bold"
+                icon={<Send className="w-3.5 h-3.5 text-blue-900" />}
+                onClick={() => {
+                  setBatchBillingScope('ALL');
+                  setIsBatchBillingOpen(true);
+                }}
+              >
+                Bill All School Learners
+              </Button>
               <span className="text-slate-500 font-medium">
                 Showing {filteredFeeStructures.length} of {feeStructures.length} structures
               </span>
@@ -1012,7 +876,7 @@ export const FeesView: React.FC = () => {
                 )}
               </div>
 
-              {/* Class Filter Dropdown */}
+              {/* Class Filter Dropdown & Batch Billing */}
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <div className="relative w-full sm:w-48">
                   <select
@@ -1031,6 +895,23 @@ export const FeesView: React.FC = () => {
                     })}
                   </select>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-900 border-blue-200 bg-blue-50/70 hover:bg-blue-100 font-bold shrink-0"
+                  icon={<Send className="w-3.5 h-3.5 text-blue-900" />}
+                  onClick={() => {
+                    if (balanceClassFilter !== 'ALL') {
+                      setBatchBillingScope('GRADE');
+                      setBatchBillingGrade(balanceClassFilter as GradeLevel);
+                    } else {
+                      setBatchBillingScope('ALL');
+                    }
+                    setIsBatchBillingOpen(true);
+                  }}
+                >
+                  {balanceClassFilter !== 'ALL' ? `Bill ${balanceClassFilter}` : 'Bill All Students'}
+                </Button>
               </div>
             </div>
 
@@ -1239,16 +1120,6 @@ export const FeesView: React.FC = () => {
                                 <span>Pay</span>
                               </button>
 
-                              {/* Direct M-Pesa STK Push */}
-                              <button
-                                onClick={() => handleOpenStkForStudent(std)}
-                                className="px-2.5 py-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
-                                title="Send M-Pesa Prompt to parent"
-                              >
-                                <Smartphone className="w-3 h-3" />
-                                <span>STK</span>
-                              </button>
-
                               {/* View Full Ledger */}
                               <button
                                 onClick={() => {
@@ -1377,19 +1248,43 @@ export const FeesView: React.FC = () => {
       {activeTab === 'INVOICES' && (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
           <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search invoice number, student..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl"
-              />
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search invoice number, student..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl"
+                />
+              </div>
             </div>
-            <span className="text-xs text-slate-500 font-medium">
-              Showing {filteredInvoices.length} invoices
-            </span>
+            <div className="flex items-center gap-2.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-blue-900 border-blue-200 bg-blue-50/60 hover:bg-blue-100 font-bold"
+                icon={<Send className="w-3.5 h-3.5 text-blue-900" />}
+                onClick={() => {
+                  setBatchBillingScope('ALL');
+                  setIsBatchBillingOpen(true);
+                }}
+              >
+                Bill All Students
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Plus className="w-3.5 h-3.5" />}
+                onClick={() => setIsInvoiceModalOpen(true)}
+              >
+                + Single Invoice
+              </Button>
+              <span className="text-xs text-slate-500 font-medium ml-1">
+                Showing {filteredInvoices.length} invoices
+              </span>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1463,198 +1358,10 @@ export const FeesView: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 4: SAFARICOM DARAJA M-PESA STK PUSH & WEBHOOK GATEWAY */}
-      {activeTab === 'DARAJA' && (
-        <div className="space-y-6">
-          <div className="bg-emerald-950 text-emerald-100 p-6 rounded-3xl border border-emerald-800 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                <h3 className="text-lg font-bold text-white tracking-tight">
-                  Safaricom Daraja API 2.0 • Lipa na M-Pesa Online Gateway
-                </h3>
-              </div>
-              <p className="text-xs text-emerald-300 mt-1 max-w-xl">
-                Dispatch instant STK Push prompts directly to parents&apos; phones. Once parents enter their M-Pesa PIN, transactions are reconciled in real-time and credited to student fee ledger.
-              </p>
-            </div>
-
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Send className="w-4 h-4" />}
-              onClick={() => setIsStkModalOpen(true)}
-              className="bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-bold border-none"
-            >
-              Initiate STK Push Prompt
-            </Button>
-          </div>
-
-          {/* Transactions List */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">
-                Live M-Pesa Online Transactions Log ({darajaTransactions.length})
-              </span>
-              <Badge variant="primary" size="sm">
-                Sandbox & Live Compatible
-              </Badge>
-            </div>
-
-            {darajaTransactions.length === 0 ? (
-              <div className="p-12 text-center text-xs text-slate-400 space-y-2">
-                <Smartphone className="w-8 h-8 mx-auto text-emerald-600" />
-                <p>No Daraja M-Pesa prompts sent yet.</p>
-                <p className="text-[10px]">Click &apos;Initiate STK Push Prompt&apos; to trigger an M-Pesa prompt to a parent.</p>
-              </div>
-            ) : (
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-100">
-                    <th className="py-3 px-4">Time</th>
-                    <th className="py-3 px-4">Parent Phone</th>
-                    <th className="py-3 px-4">Account Ref</th>
-                    <th className="py-3 px-4">Amount</th>
-                    <th className="py-3 px-4">Receipt / Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {darajaTransactions.map((txn) => (
-                    <tr key={txn.id} className="hover:bg-slate-50/60">
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-500">
-                        {new Date(txn.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-slate-800">{txn.phoneNumber}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-700">{txn.accountReference}</td>
-                      <td className="py-3 px-4 font-bold text-emerald-800">
-                        {school?.currencySymbol || 'KSh'} {txn.amount.toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4">
-                        {txn.status === 'COMPLETED' ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-mono font-bold text-[11px]">
-                            <CheckCircle className="w-3 h-3 text-emerald-600" /> {txn.mpesaReceiptNumber}
-                          </span>
-                        ) : (
-                          <Badge variant="warning" size="sm">
-                            PIN Prompt Sent
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {txn.status === 'PENDING' && (
-                          <button
-                            onClick={() => handleSimulatePaymentConfirmation(txn)}
-                            className="px-2.5 py-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-lg cursor-pointer transition-colors"
-                          >
-                            Simulate PIN Entry
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* STK Push Modal */}
-      <Modal
-        isOpen={isStkModalOpen}
-        onClose={() => setIsStkModalOpen(false)}
-        title="Initiate Safaricom M-Pesa STK Push"
-        maxWidth="md"
-      >
-        <form onSubmit={handleSendStkPush} className="space-y-3.5 text-xs">
-          <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-xl flex items-start gap-2.5">
-            <Smartphone className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-bold block">Direct M-Pesa Prompt</span>
-              <p className="text-[11px] text-emerald-800">
-                This will trigger a prompt on the customer&apos;s phone: &quot;Do you want to pay {school?.currencySymbol || 'KSh'} {stkFormData.amount.toLocaleString()} to {school?.name || 'Gracia Learning Centre'}? Enter PIN&quot;.
-              </p>
-            </div>
-          </div>
-
-          <StudentSearchSelect
-            students={students}
-            selectedStudentId={stkFormData.studentId}
-            currencySymbol={school?.currencySymbol || 'KSh'}
-            label="Search & Select Learner (by Class or Name)"
-            required
-            placeholder="Type student name, admission #, or parent phone..."
-            onSelectStudent={(s) => {
-              setStkFormData({
-                ...stkFormData,
-                studentId: s.id,
-                phoneNumber: s.parentPhone || stkFormData.phoneNumber,
-                accountReference: s.admissionNumber || 'GLCM-FEES',
-                amount: s.totalBalance && s.totalBalance > 0 ? s.totalBalance : stkFormData.amount,
-              });
-            }}
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="font-semibold text-slate-700">Parent Phone Number (M-Pesa) *</label>
-              <input
-                type="tel"
-                required
-                placeholder="0712345678 or 2547..."
-                value={stkFormData.phoneNumber}
-                onChange={(e) => setStkFormData({ ...stkFormData, phoneNumber: e.target.value })}
-                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono font-bold"
-              />
-            </div>
-            <div>
-              <label className="font-semibold text-slate-700">Amount ({school?.currencySymbol || 'KSh'}) *</label>
-              <input
-                type="number"
-                required
-                value={stkFormData.amount}
-                onChange={(e) => setStkFormData({ ...stkFormData, amount: Number(e.target.value) })}
-                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-bold text-emerald-800"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="font-semibold text-slate-700">Account Reference</label>
-            <input
-              type="text"
-              value={stkFormData.accountReference}
-              onChange={(e) => setStkFormData({ ...stkFormData, accountReference: e.target.value })}
-              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono"
-            />
-          </div>
-
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-            <Button variant="outline" type="button" onClick={() => setIsStkModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              loading={isStkSending}
-              icon={<Send className="w-3.5 h-3.5" />}
-              className="bg-emerald-600 hover:bg-emerald-500 font-bold"
-            >
-              Send STK Push
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
       {/* Record Payment Modal */}
       <Modal
         isOpen={isPayModalOpen}
-        onClose={() => {
-          setIsPayModalOpen(false);
-          setModalStkStatus('IDLE');
-          setModalActiveTxn(null);
-        }}
+        onClose={() => setIsPayModalOpen(false)}
         title="Record Fee Payment Receipt"
         maxWidth="md"
       >
@@ -1673,11 +1380,6 @@ export const FeesView: React.FC = () => {
                 amount: st.totalBalance && st.totalBalance > 0 ? st.totalBalance : payFormData.amount,
                 notes: `Fee payment for ${st.fullName} (${st.currentClass})`,
               });
-              if (st.parentPhone) {
-                setPayMpesaPhone(st.parentPhone);
-              }
-              setModalStkStatus('IDLE');
-              setModalActiveTxn(null);
             }}
           />
 
@@ -1699,7 +1401,6 @@ export const FeesView: React.FC = () => {
                 onChange={(e) => {
                   const m = e.target.value as any;
                   setPayFormData({ ...payFormData, paymentMethod: m });
-                  setModalStkStatus('IDLE');
                 }}
                 className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium"
               >
@@ -1711,88 +1412,6 @@ export const FeesView: React.FC = () => {
               </select>
             </div>
           </div>
-
-          {/* Lipa na M-Pesa STK Push Section (Active when payment mode is MPESA) */}
-          {payFormData.paymentMethod === 'MPESA' && (
-            <div className="bg-emerald-50/80 border border-emerald-200/90 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-600 flex items-center justify-center text-white shadow-xs">
-                    <Smartphone className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-xs">Lipa na M-Pesa STK Push Prompt</h4>
-                    <p className="text-[11px] text-emerald-800">Send an instant PIN prompt directly to parent's handset</p>
-                  </div>
-                </div>
-                <Badge variant={modalStkStatus === 'CONFIRMED' ? 'success' : modalStkStatus === 'SENT' ? 'warning' : 'primary'} size="sm">
-                  {modalStkStatus === 'CONFIRMED' ? 'PIN Verified' : modalStkStatus === 'SENT' ? 'Prompt Sent' : 'Ready'}
-                </Badge>
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 text-[11px]">Parent M-Pesa Phone Number</label>
-                <div className="flex gap-2 mt-1">
-                  <div className="relative flex-1">
-                    <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                    <input
-                      type="tel"
-                      value={payMpesaPhone}
-                      onChange={(e) => setPayMpesaPhone(e.target.value)}
-                      placeholder="0712345678 or 2547..."
-                      className="w-full pl-8 pr-3 py-1.5 border border-emerald-300 rounded-xl font-mono font-bold bg-white text-slate-900 text-xs"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    loading={isModalStkSending}
-                    onClick={handleTriggerModalStkPush}
-                    icon={<Send className="w-3.5 h-3.5" />}
-                    className="bg-emerald-600 hover:bg-emerald-500 font-bold whitespace-nowrap shadow-xs"
-                  >
-                    Send Push Prompt
-                  </Button>
-                </div>
-              </div>
-
-              {/* Status Feedback */}
-              {modalStkStatus === 'SENT' && (
-                <div className="bg-white/90 border border-amber-300 rounded-xl p-2.5 space-y-2">
-                  <div className="flex items-center gap-2 text-amber-800">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
-                    <span className="font-semibold text-[11px]">
-                      Prompt dispatched to {darajaService.normalizePhoneNumber(payMpesaPhone)} (KSh {Number(payFormData.amount).toLocaleString()})
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Parent should see an M-Pesa PIN prompt on their screen. Enter PIN or click below to simulate instant confirmation:
-                  </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleConfirmModalStk}
-                    icon={<CheckCircle className="w-3.5 h-3.5 text-emerald-600" />}
-                    className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-bold justify-center"
-                  >
-                    Simulate / Confirm M-Pesa PIN Entry
-                  </Button>
-                </div>
-              )}
-
-              {modalStkStatus === 'CONFIRMED' && (
-                <div className="bg-emerald-100/90 border border-emerald-300 rounded-xl p-2.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-emerald-900 font-bold text-[11px]">
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                    <span>M-Pesa Authorization Confirmed! Code: {payFormData.transactionReference}</span>
-                  </div>
-                  <Badge variant="success" size="sm">Auto-Filled</Badge>
-                </div>
-              )}
-            </div>
-          )}
 
           <div>
             <label className="font-semibold text-slate-700">
@@ -1825,11 +1444,7 @@ export const FeesView: React.FC = () => {
             <Button
               variant="outline"
               type="button"
-              onClick={() => {
-                setIsPayModalOpen(false);
-                setModalStkStatus('IDLE');
-                setModalActiveTxn(null);
-              }}
+              onClick={() => setIsPayModalOpen(false)}
             >
               Cancel
             </Button>
@@ -2369,6 +1984,15 @@ export const FeesView: React.FC = () => {
           setPayFormData((prev) => ({ ...prev, studentId: std.id }));
           setIsPayModalOpen(true);
         }}
+      />
+
+      {/* Batch Billing Modal */}
+      <BatchBillingModal
+        isOpen={isBatchBillingOpen}
+        onClose={() => setIsBatchBillingOpen(false)}
+        onSuccess={() => loadFinanceData()}
+        initialScope={batchBillingScope}
+        initialGrade={batchBillingGrade}
       />
     </div>
   );

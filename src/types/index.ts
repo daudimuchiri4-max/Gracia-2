@@ -721,7 +721,7 @@ export interface AuditLog {
 }
 
 // SaaS Monthly Subscription & Client Billing
-export type SubscriptionStatus = 'ACTIVE' | 'GRACE_PERIOD' | 'EXPIRED' | 'LOCKED' | 'TRIAL';
+export type SubscriptionStatus = 'ACTIVE' | 'GRACE_PERIOD' | 'EXPIRED' | 'LOCKED' | 'SUSPENDED' | 'TRIAL';
 export type BillingCycle = 'MONTHLY' | 'QUARTERLY' | 'ANNUAL';
 export type SubscriptionPaymentMethod = 'MPESA_STK' | 'MPESA_MANUAL' | 'BANK_TRANSFER' | 'CASH';
 
@@ -754,6 +754,7 @@ export interface SchoolSubscriptionConfig {
   lastPaymentAmount?: number;
   lastPaymentRef?: string;
   lockedReason?: string;
+  suspendedAt?: string;
 }
 
 export interface SubscriptionInvoice {

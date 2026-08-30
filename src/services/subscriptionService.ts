@@ -397,7 +397,9 @@ export const subscriptionService = {
 
     let computedStatus: SubscriptionStatus = config.status;
 
-    if (config.status === 'LOCKED') {
+    if (config.status === 'SUSPENDED') {
+      computedStatus = 'SUSPENDED';
+    } else if (config.status === 'LOCKED') {
       computedStatus = 'LOCKED';
     } else if (isExpiredPastGrace && config.autoLockOnOverdue) {
       computedStatus = 'LOCKED';
@@ -409,7 +411,8 @@ export const subscriptionService = {
       computedStatus = 'ACTIVE';
     }
 
-    const isLocked = computedStatus === 'LOCKED';
+    const isSuspended = computedStatus === 'SUSPENDED';
+    const isLocked = computedStatus === 'LOCKED' || isSuspended;
     const canAccessErp = !isLocked;
 
     return {
@@ -418,14 +421,105 @@ export const subscriptionService = {
       isWithinGracePeriod,
       isExpiredPastGrace,
       computedStatus,
+      isSuspended,
       isLocked,
       canAccessErp,
+      startDate: config.startDate,
+      formattedStartDate: config.startDate
+        ? new Date(config.startDate).toLocaleDateString('en-KE', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })
+        : 'N/A',
       formattedDueDate: new Date(config.nextDueDate).toLocaleDateString('en-KE', {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
       }),
+      suspendedAt: config.suspendedAt,
+      lockedReason: config.lockedReason,
     };
+  },
+
+  /**
+   * Suspend client school subscription (RESTRICTED TO SYSTEM OWNER)
+   */
+  async suspendSubscription(
+    schoolId: string,
+    reason: string = 'System subscription suspended by System Owner.'
+  ): Promise<SchoolSubscriptionConfig> {
+    if (!this.isSystemOwnerSessionVerified()) {
+      throw new Error('ACCESS_DENIED: Only System Owner can suspend school subscriptions.');
+    }
+
+    const config = await this.getSubscriptionConfig(schoolId);
+    const updated: SchoolSubscriptionConfig = {
+      ...config,
+      status: 'SUSPENDED',
+      suspendedAt: new Date().toISOString(),
+      lockedReason: reason.trim() || 'System subscription suspended by System Owner.',
+    };
+
+    await this.saveSubscriptionConfig(schoolId, updated, true);
+    return updated;
+  },
+
+  /**
+   * Resume suspended subscription (RESTRICTED TO SYSTEM OWNER)
+   */
+  async resumeSubscription(schoolId: string): Promise<SchoolSubscriptionConfig> {
+    if (!this.isSystemOwnerSessionVerified()) {
+      throw new Error('ACCESS_DENIED: Only System Owner can resume school subscriptions.');
+    }
+
+    const config = await this.getSubscriptionConfig(schoolId);
+    const updated: SchoolSubscriptionConfig = {
+      ...config,
+      status: 'ACTIVE',
+      suspendedAt: undefined,
+      lockedReason: undefined,
+    };
+
+    await this.saveSubscriptionConfig(schoolId, updated, true);
+    return updated;
+  },
+
+  /**
+   * Restart / customize subscription start and due dates (RESTRICTED TO SYSTEM OWNER)
+   */
+  async restartSubscriptionDates(
+    schoolId: string,
+    params: {
+      startDate: string;
+      nextDueDate: string;
+      resetStatus?: boolean;
+      newLicenseKey?: boolean;
+      notes?: string;
+    }
+  ): Promise<SchoolSubscriptionConfig> {
+    if (!this.isSystemOwnerSessionVerified()) {
+      throw new Error('ACCESS_DENIED: Only System Owner can restart or modify subscription dates.');
+    }
+
+    const config = await this.getSubscriptionConfig(schoolId);
+    const startIso = new Date(params.startDate).toISOString();
+    const dueIso = new Date(params.nextDueDate).toISOString();
+
+    const licenseKey = params.newLicenseKey ? this.generateLicenseKey(schoolId) : config.licenseKey;
+
+    const updated: SchoolSubscriptionConfig = {
+      ...config,
+      startDate: startIso,
+      nextDueDate: dueIso,
+      status: params.resetStatus !== false ? 'ACTIVE' : config.status,
+      lockedReason: params.resetStatus !== false ? undefined : config.lockedReason,
+      suspendedAt: params.resetStatus !== false ? undefined : config.suspendedAt,
+      licenseKey,
+    };
+
+    await this.saveSubscriptionConfig(schoolId, updated, true);
+    return updated;
   },
 
   /**

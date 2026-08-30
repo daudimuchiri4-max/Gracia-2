@@ -38,6 +38,11 @@ import {
   EyeOff,
   Check,
   RotateCcw,
+  Pause,
+  Play,
+  CalendarClock,
+  CalendarDays,
+  CalendarCheck,
 } from 'lucide-react';
 
 export const SystemOwnerConsole: React.FC = () => {
@@ -59,10 +64,22 @@ export const SystemOwnerConsole: React.FC = () => {
   const [isRecordPaymentModalOpen, setIsRecordPaymentModalOpen] = useState<boolean>(false);
   const [isPayoutConfigModalOpen, setIsPayoutConfigModalOpen] = useState<boolean>(false);
   const [isPlanConfigModalOpen, setIsPlanConfigModalOpen] = useState<boolean>(false);
-  const [isDarajaModalOpen, setIsDarajaModalOpen] = useState<boolean>(false);
   const [isChangePasskeyModalOpen, setIsChangePasskeyModalOpen] = useState<boolean>(false);
   const [isRestoreMasterKeyModalOpen, setIsRestoreMasterKeyModalOpen] = useState<boolean>(false);
+  const [isRestartDatesModalOpen, setIsRestartDatesModalOpen] = useState<boolean>(false);
+  const [isSuspendModalOpen, setIsSuspendModalOpen] = useState<boolean>(false);
   const [selectedInvoiceForPrint, setSelectedInvoiceForPrint] = useState<SubscriptionInvoice | null>(null);
+
+  // Date & Suspension Management State
+  const [restartStartDate, setRestartStartDate] = useState<string>('');
+  const [restartDueDate, setRestartDueDate] = useState<string>('');
+  const [restartResetStatus, setRestartResetStatus] = useState<boolean>(true);
+  const [restartNewLicenseKey, setRestartNewLicenseKey] = useState<boolean>(true);
+  const [restartNotes, setRestartNotes] = useState<string>('');
+  const [restartLoading, setRestartLoading] = useState<boolean>(false);
+  const [suspendReasonInput, setSuspendReasonInput] = useState<string>('');
+  const [suspendLoading, setSuspendLoading] = useState<boolean>(false);
+  const [resumeLoading, setResumeLoading] = useState<boolean>(false);
 
   // Master Passkey Management State
   const [currentMasterPasskeyDisplay, setCurrentMasterPasskeyDisplay] = useState<string>(() =>
@@ -82,7 +99,7 @@ export const SystemOwnerConsole: React.FC = () => {
   // Manual payment state
   const [manualAmount, setManualAmount] = useState<number>(7500);
   const [manualMonths, setManualMonths] = useState<number>(1);
-  const [manualMethod, setManualMethod] = useState<'MPESA_STK' | 'MPESA_MANUAL' | 'BANK_TRANSFER' | 'CASH'>('MPESA_MANUAL');
+  const [manualMethod, setManualMethod] = useState<'MPESA_MANUAL' | 'BANK_TRANSFER' | 'CASH'>('MPESA_MANUAL');
   const [manualRef, setManualRef] = useState<string>('');
   const [manualNotes, setManualNotes] = useState<string>('');
 
@@ -94,13 +111,6 @@ export const SystemOwnerConsole: React.FC = () => {
   const [planGraceDays, setPlanGraceDays] = useState<number>(5);
   const [planAutoLock, setPlanAutoLock] = useState<boolean>(true);
   const [planName, setPlanName] = useState<string>('CBC Pro Cloud School ERP (Monthly)');
-
-  // Daraja Gateway State (System Owner level)
-  const [darajaConsumerKey, setDarajaConsumerKey] = useState<string>('cK892019482710398471920');
-  const [darajaConsumerSecret, setDarajaConsumerSecret] = useState<string>('cS81920384710928374619');
-  const [darajaPasskey, setDarajaPasskey] = useState<string>('bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919');
-  const [darajaShortcode, setDarajaShortcode] = useState<string>('8829102');
-  const [showSecrets, setShowSecrets] = useState<boolean>(false);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,6 +291,92 @@ export const SystemOwnerConsole: React.FC = () => {
       showToast('Subscription pricing & grace period updated.', 'success');
     } catch (e: any) {
       showToast(e.message || 'Error saving plan config', 'error');
+    }
+  };
+
+  const handleOpenRestartModal = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const defaultDue = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    setRestartStartDate(subscription.startDate ? subscription.startDate.split('T')[0] : today);
+    setRestartDueDate(subscription.nextDueDate ? subscription.nextDueDate.split('T')[0] : defaultDue);
+    setRestartResetStatus(true);
+    setRestartNewLicenseKey(true);
+    setRestartNotes(`Subscription restarted by System Owner on ${new Date().toLocaleDateString()}`);
+    setIsRestartDatesModalOpen(true);
+  };
+
+  const handleApplyPreset = (days: number, fromToday: boolean = true) => {
+    const todayIso = new Date().toISOString().split('T')[0];
+    const baseDate = fromToday ? new Date() : (restartStartDate ? new Date(restartStartDate) : new Date());
+    const newStart = fromToday ? todayIso : (restartStartDate || todayIso);
+    const newDue = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    setRestartStartDate(newStart);
+    setRestartDueDate(newDue);
+  };
+
+  const handleApplyRestartDates = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restartStartDate || !restartDueDate) {
+      showToast('Please select both a Start Date and a Next Due Date.', 'error');
+      return;
+    }
+    setRestartLoading(true);
+    try {
+      const updated = await subscriptionService.restartSubscriptionDates(school?.id || 'GLCM', {
+        startDate: restartStartDate,
+        nextDueDate: restartDueDate,
+        resetStatus: restartResetStatus,
+        newLicenseKey: restartNewLicenseKey,
+        notes: restartNotes.trim() || undefined,
+      });
+      setSubscription(updated);
+      setIsRestartDatesModalOpen(false);
+      showToast(
+        `Subscription cycle restarted! Active from ${new Date(restartStartDate).toLocaleDateString()} to ${new Date(restartDueDate).toLocaleDateString()}.`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast(err.message || 'Failed to restart subscription dates.', 'error');
+    } finally {
+      setRestartLoading(false);
+    }
+  };
+
+  const handleOpenSuspendModal = () => {
+    setSuspendReasonInput(
+      subscription.lockedReason || 'Subscription temporarily suspended by System Owner for administrative review.'
+    );
+    setIsSuspendModalOpen(true);
+  };
+
+  const handleConfirmSuspend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSuspendLoading(true);
+    try {
+      const updated = await subscriptionService.suspendSubscription(
+        school?.id || 'GLCM',
+        suspendReasonInput.trim() || 'Subscription suspended by System Owner.'
+      );
+      setSubscription(updated);
+      setIsSuspendModalOpen(false);
+      showToast('Gracia Learning Centre subscription has been suspended.', 'warning');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to suspend subscription.', 'error');
+    } finally {
+      setSuspendLoading(false);
+    }
+  };
+
+  const handleResumeSubscription = async () => {
+    setResumeLoading(true);
+    try {
+      const updated = await subscriptionService.resumeSubscription(school?.id || 'GLCM');
+      setSubscription(updated);
+      showToast('Gracia Learning Centre subscription resumed and active!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to resume subscription.', 'error');
+    } finally {
+      setResumeLoading(false);
     }
   };
 
@@ -499,17 +595,39 @@ export const SystemOwnerConsole: React.FC = () => {
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
             <span>Client School Status</span>
-            <span className="p-1.5 rounded-xl bg-slate-100 text-slate-700">
-              {health.isLocked ? <Lock className="w-4 h-4 text-rose-600" /> : <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+            <span className={`p-1.5 rounded-xl ${
+              health.isSuspended
+                ? 'bg-amber-100 text-amber-700'
+                : health.isLocked
+                ? 'bg-rose-100 text-rose-700'
+                : 'bg-emerald-100 text-emerald-700'
+            }`}>
+              {health.isSuspended ? (
+                <Pause className="w-4 h-4 text-amber-700" />
+              ) : health.isLocked ? (
+                <Lock className="w-4 h-4 text-rose-600" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              )}
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className={`text-2xl font-black ${health.isLocked ? 'text-rose-600' : 'text-emerald-600'}`}>
+            <span
+              className={`text-2xl font-black ${
+                health.isSuspended
+                  ? 'text-amber-600'
+                  : health.isLocked
+                  ? 'text-rose-600'
+                  : 'text-emerald-600'
+              }`}
+            >
               {health.computedStatus}
             </span>
           </div>
           <p className="text-[11px] text-slate-500">
-            {health.isLocked
+            {health.isSuspended
+              ? 'Subscription placed on administrative hold'
+              : health.isLocked
               ? 'Gracia Learning Centre is currently locked'
               : `${health.daysRemaining} days remaining on current cycle`}
           </p>
@@ -534,21 +652,25 @@ export const SystemOwnerConsole: React.FC = () => {
           </p>
         </div>
 
-        {/* Metric 3: Grace Period */}
+        {/* Metric 3: Active Cycle Dates */}
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>Grace Period Policy</span>
-            <span className="p-1.5 rounded-xl bg-amber-50 text-amber-700">
-              <Clock className="w-4 h-4" />
+            <span>Subscription Period</span>
+            <span className="p-1.5 rounded-xl bg-purple-50 text-purple-700">
+              <CalendarClock className="w-4 h-4" />
             </span>
           </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-black text-slate-900">
-              {subscription.gracePeriodDays || 5} Days
-            </span>
+          <div className="space-y-0.5">
+            <p className="text-xs font-bold text-slate-800">
+              Start: <span className="text-slate-900 font-mono">{health.formattedStartDate}</span>
+            </p>
+            <p className="text-xs font-bold text-slate-800">
+              Due: <span className="text-indigo-600 font-mono">{health.formattedDueDate}</span>
+            </p>
           </div>
           <p className="text-[11px] text-slate-500">
-            Auto-lock on overdue: <strong>{subscription.autoLockOnOverdue ? 'Enabled' : 'Disabled'}</strong>
+            Grace: <strong>{subscription.gracePeriodDays || 5} Days</strong> | Auto-lock:{' '}
+            <strong>{subscription.autoLockOnOverdue ? 'Yes' : 'No'}</strong>
           </p>
         </div>
 
@@ -577,11 +699,44 @@ export const SystemOwnerConsole: React.FC = () => {
           <div>
             <h2 className="text-base font-bold text-slate-900">Subscription Controls & License Overrides</h2>
             <p className="text-xs text-slate-500">
-              Instant controls to extend validity, record incoming payments, modify pricing, or suspend access.
+              Instant controls to restart dates, extend validity, suspend or resume subscriptions, and configure pricing.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<RotateCcw className="w-3.5 h-3.5 text-sky-200" />}
+              onClick={handleOpenRestartModal}
+              className="text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              Restart Subscription Dates
+            </Button>
+
+            {health.isSuspended ? (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Play className="w-3.5 h-3.5 text-white" />}
+                onClick={handleResumeSubscription}
+                loading={resumeLoading}
+                className="text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                Resume Subscription
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Pause className="w-3.5 h-3.5 text-amber-600" />}
+                onClick={handleOpenSuspendModal}
+                className="text-xs font-bold border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100"
+              >
+                Suspend Subscription
+              </Button>
+            )}
+
             <Button
               variant="primary"
               size="sm"
@@ -636,30 +791,20 @@ export const SystemOwnerConsole: React.FC = () => {
             </Button>
 
             <Button
-              variant="outline"
+              variant={health.isLocked && !health.isSuspended ? 'primary' : 'danger'}
               size="sm"
-              icon={<CreditCard className="w-3.5 h-3.5 text-emerald-600" />}
-              onClick={() => setIsDarajaModalOpen(true)}
-              className="text-xs font-semibold"
-            >
-              M-Pesa Gateway Keys
-            </Button>
-
-            <Button
-              variant={health.isLocked ? 'primary' : 'danger'}
-              size="sm"
-              icon={health.isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+              icon={health.isLocked && !health.isSuspended ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
               onClick={handleToggleLock}
               className="text-xs font-bold"
             >
-              {health.isLocked ? 'Reactivate Client ERP' : 'Suspend / Lock ERP'}
+              {health.isLocked && !health.isSuspended ? 'Unlock Client ERP' : 'Emergency Lock ERP'}
             </Button>
           </div>
         </div>
 
-        {/* Quick Extensions */}
+        {/* Quick Extensions & Date Presets */}
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-          <span className="text-slate-500 font-bold">Quick Extension Grants:</span>
+          <span className="text-slate-500 font-bold">Quick Date Adjustments:</span>
           <button
             onClick={() => handleExtendDays(7)}
             className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl transition-colors cursor-pointer"
@@ -678,6 +823,151 @@ export const SystemOwnerConsole: React.FC = () => {
           >
             +30 Days (1 Full Month)
           </button>
+          <button
+            onClick={handleOpenRestartModal}
+            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold rounded-xl border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1"
+          >
+            <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Restart Cycle Dates...</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Dedicated Subscription Lifecycle & Date Control Panel */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2">
+            <CalendarCheck className="w-5 h-5 text-indigo-600" />
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">Subscription Lifecycle & Date Control Panel</h3>
+              <p className="text-xs text-slate-500">
+                Manage start date, renewal due date, suspension status, or completely restart billing cycles.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {health.isSuspended ? (
+              <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-amber-100 text-amber-900 border border-amber-200 flex items-center gap-1.5">
+                <Pause className="w-3.5 h-3.5 text-amber-700" />
+                <span>Currently Suspended</span>
+              </span>
+            ) : (
+              <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-emerald-100 text-emerald-900 border border-emerald-200 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Active Cycle</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* If Suspended Notice Banner */}
+        {health.isSuspended && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Instance Suspended by System Owner</span>
+              </div>
+              <p className="text-amber-800">
+                <strong>Reason:</strong> {subscription.lockedReason || 'Administrative suspension.'}
+                {subscription.suspendedAt && (
+                  <span className="ml-2 text-amber-700 text-[11px]">
+                    (Suspended on {new Date(subscription.suspendedAt).toLocaleString()})
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Play className="w-3.5 h-3.5" />}
+                onClick={handleResumeSubscription}
+                loading={resumeLoading}
+                className="font-bold bg-emerald-600 hover:bg-emerald-700 text-xs"
+              >
+                Resume & Reactivate Now
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<RotateCcw className="w-3.5 h-3.5" />}
+                onClick={handleOpenRestartModal}
+                className="font-bold text-xs border-amber-300 text-amber-900 bg-white hover:bg-amber-100"
+              >
+                Restart Cycle
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Date Details Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Cycle Start Date</span>
+            <p className="font-mono font-bold text-base text-slate-900">{health.formattedStartDate}</p>
+            <p className="text-[11px] text-slate-500">Official activation timestamp</p>
+          </div>
+
+          <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl space-y-1.5">
+            <span className="text-[11px] font-bold text-indigo-500 uppercase tracking-wider block">Next Renewal Due Date</span>
+            <p className="font-mono font-bold text-base text-indigo-950">{health.formattedDueDate}</p>
+            <p className="text-[11px] text-indigo-700 font-semibold">
+              {health.daysRemaining > 0 ? `${health.daysRemaining} days until renewal` : 'Past due / Renewal required'}
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 flex flex-col justify-center">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Quick Cycle Presets</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={async () => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const due30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                  const updated = await subscriptionService.restartSubscriptionDates(school?.id || 'GLCM', {
+                    startDate: today,
+                    nextDueDate: due30,
+                    resetStatus: true,
+                    newLicenseKey: true,
+                    notes: `Restarted 30-day cycle on ${new Date().toLocaleDateString()}`,
+                  });
+                  setSubscription(updated);
+                  showToast('Subscription restarted from today (+30 Days Active).', 'success');
+                }}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg font-bold text-slate-700 text-[11px] transition-colors cursor-pointer"
+              >
+                Today + 30d
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const due90 = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                  const updated = await subscriptionService.restartSubscriptionDates(school?.id || 'GLCM', {
+                    startDate: today,
+                    nextDueDate: due90,
+                    resetStatus: true,
+                    newLicenseKey: true,
+                    notes: `Restarted 1-Term cycle on ${new Date().toLocaleDateString()}`,
+                  });
+                  setSubscription(updated);
+                  showToast('Subscription restarted from today (+90 Days / 1 Term).', 'success');
+                }}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg font-bold text-slate-700 text-[11px] transition-colors cursor-pointer"
+              >
+                Today + 90d (1 Term)
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenRestartModal}
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[11px] transition-colors cursor-pointer"
+              >
+                Custom Dates...
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -942,7 +1232,6 @@ export const SystemOwnerConsole: React.FC = () => {
                 className="w-full px-3 py-2 border border-slate-200 rounded-xl"
               >
                 <option value="MPESA_MANUAL">M-Pesa Buy Goods Till</option>
-                <option value="MPESA_STK">M-Pesa STK Push</option>
                 <option value="BANK_TRANSFER">Bank Direct Deposit</option>
                 <option value="CASH">Cash Settlement</option>
               </select>
@@ -1270,85 +1559,6 @@ export const SystemOwnerConsole: React.FC = () => {
         </form>
       </Modal>
 
-      {/* MODAL: M-Pesa Daraja Gateway API Keys */}
-      <Modal
-        isOpen={isDarajaModalOpen}
-        onClose={() => setIsDarajaModalOpen(false)}
-        title="M-Pesa Daraja Gateway API Credentials"
-      >
-        <div className="space-y-4 text-xs">
-          <p className="text-slate-500">
-            These API credentials connect the system to Safaricom Daraja for STK Push validation and automated payment callbacks.
-          </p>
-
-          <div className="space-y-3">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Daraja Shortcode / Till</label>
-              <input
-                type="text"
-                value={darajaShortcode}
-                onChange={(e) => setDarajaShortcode(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Consumer Key</label>
-              <input
-                type="text"
-                value={darajaConsumerKey}
-                onChange={(e) => setDarajaConsumerKey(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1 flex items-center justify-between">
-                <span>Consumer Secret</span>
-                <button
-                  type="button"
-                  onClick={() => setShowSecrets(!showSecrets)}
-                  className="text-indigo-600 hover:text-indigo-800 text-[11px]"
-                >
-                  {showSecrets ? 'Hide' : 'Show'}
-                </button>
-              </label>
-              <input
-                type={showSecrets ? 'text' : 'password'}
-                value={darajaConsumerSecret}
-                onChange={(e) => setDarajaConsumerSecret(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
-              />
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Lipa na M-Pesa Passkey</label>
-              <input
-                type={showSecrets ? 'text' : 'password'}
-                value={darajaPasskey}
-                onChange={(e) => setDarajaPasskey(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="pt-2 flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                showToast('Daraja API credentials saved securely.', 'success');
-                setIsDarajaModalOpen(false);
-              }}
-              className="font-bold"
-            >
-              Save Credentials
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
       {/* MODAL: Printable Invoice / Receipt */}
       {selectedInvoiceForPrint && (
         <Modal
@@ -1395,6 +1605,204 @@ export const SystemOwnerConsole: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* MODAL: Restart Subscription Dates */}
+      <Modal
+        isOpen={isRestartDatesModalOpen}
+        onClose={() => setIsRestartDatesModalOpen(false)}
+        title="Restart Subscription Dates & Lifecycle"
+      >
+        <form onSubmit={handleApplyRestartDates} className="space-y-4 text-xs">
+          <div className="p-3 bg-indigo-50 border border-indigo-200 text-indigo-950 rounded-2xl flex items-start gap-2.5">
+            <CalendarClock className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold">System Owner Date Adjustment:</span> Set custom active dates for Gracia Learning Centre. Restarting the dates allows you to roll over cycles, align with academic terms, or grant fresh subscription periods.
+            </div>
+          </div>
+
+          {/* Presets */}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1.5">Quick Presets (From Today):</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleApplyPreset(30, true)}
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-center border border-slate-200 transition-colors cursor-pointer"
+              >
+                +30 Days (1 Mo)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyPreset(90, true)}
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-center border border-slate-200 transition-colors cursor-pointer"
+              >
+                +90 Days (1 Term)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyPreset(180, true)}
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-center border border-slate-200 transition-colors cursor-pointer"
+              >
+                +180 Days (2 Terms)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyPreset(365, true)}
+                className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-center border border-slate-200 transition-colors cursor-pointer"
+              >
+                +365 Days (1 Year)
+              </button>
+            </div>
+          </div>
+
+          {/* Date Range Inputs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Cycle Start Date *
+              </label>
+              <input
+                type="date"
+                value={restartStartDate}
+                onChange={(e) => setRestartStartDate(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                required
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">When subscription becomes effective</span>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Next Renewal Due Date *
+              </label>
+              <input
+                type="date"
+                value={restartDueDate}
+                onChange={(e) => setRestartDueDate(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+                required
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">When payment or renewal is due</span>
+            </div>
+          </div>
+
+          {/* Reset Options */}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={restartResetStatus}
+                onChange={(e) => setRestartResetStatus(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="font-semibold text-slate-800">
+                Set status to <strong>ACTIVE</strong> (clear any suspension or lock screen)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={restartNewLicenseKey}
+                onChange={(e) => setRestartNewLicenseKey(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="font-semibold text-slate-800">
+                Generate and assign a fresh cryptographically signed license key
+              </span>
+            </label>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              Audit / Administrative Notes (Optional)
+            </label>
+            <input
+              type="text"
+              value={restartNotes}
+              onChange={(e) => setRestartNotes(e.target.value)}
+              placeholder="e.g. Restarted cycle for Term 2 2026 as agreed with Director"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+            />
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRestartDatesModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              loading={restartLoading}
+              icon={<RotateCcw className="w-3.5 h-3.5" />}
+              className="font-bold bg-indigo-600 hover:bg-indigo-700"
+            >
+              Apply & Restart Cycle Dates
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL: Suspend Subscription */}
+      <Modal
+        isOpen={isSuspendModalOpen}
+        onClose={() => setIsSuspendModalOpen(false)}
+        title="Suspend Institution Subscription"
+      >
+        <form onSubmit={handleConfirmSuspend} className="space-y-4 text-xs">
+          <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl flex items-start gap-2.5">
+            <Pause className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold">Subscription Suspension:</span> Suspending Gracia Learning Centre will immediately lock user access and display an official suspension notice. You can resume the subscription at any time without data loss.
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              Suspension Reason / Notice to Display *
+            </label>
+            <textarea
+              rows={3}
+              value={suspendReasonInput}
+              onChange={(e) => setSuspendReasonInput(e.target.value)}
+              placeholder="e.g. Subscription temporarily suspended by Software Provider for administrative review."
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-amber-500 focus:bg-white"
+              required
+            />
+            <span className="text-[10px] text-slate-400 mt-0.5 block">
+              This message will be visible on the system lock screen to school administrators.
+            </span>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSuspendModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              size="sm"
+              loading={suspendLoading}
+              icon={<Pause className="w-3.5 h-3.5" />}
+              className="font-bold bg-amber-600 hover:bg-amber-700 text-white border-amber-600"
+            >
+              Confirm & Suspend Subscription
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* MODAL: Restore Default Master Passkey (Authenticated View) */}
       <Modal

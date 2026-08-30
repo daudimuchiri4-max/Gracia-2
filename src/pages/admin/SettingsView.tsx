@@ -5,7 +5,6 @@ import { schoolService, DEFAULT_SCHOOL_ID, DEFAULT_SCHOOL, DEFAULT_LEVELS } from
 import { operationsService } from '../../services/operationsService';
 import { compressImage } from '../../utils/imageCompressor';
 import { printerService, PrinterConfig, PaperWidth } from '../../services/printerService';
-import { darajaService, DarajaConfig, DEFAULT_DARAJA_CONFIG } from '../../services/darajaService';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { School, SchoolLevelConfig, TermDatesConfig, PaymentSettingsConfig, CBCGradingConfig, SystemPreferencesConfig } from '../../types';
@@ -86,72 +85,6 @@ export const SettingsView: React.FC = () => {
   const [printerConfig, setPrinterConfig] = useState<PrinterConfig>(printerService.getConfig());
   const [connectingPrinter, setConnectingPrinter] = useState(false);
   const [testingPrinter, setTestingPrinter] = useState(false);
-
-  // Daraja API Config State
-  const [darajaConfig, setDarajaConfig] = useState<DarajaConfig>(DEFAULT_DARAJA_CONFIG);
-  const [showConsumerSecret, setShowConsumerSecret] = useState(false);
-  const [showPasskey, setShowPasskey] = useState(false);
-  const [testingDaraja, setTestingDaraja] = useState(false);
-  const [darajaTestStatus, setDarajaTestStatus] = useState<{
-    success: boolean;
-    message: string;
-    token?: string;
-    expiresIn?: string;
-  } | null>(null);
-  const [copiedWebhook, setCopiedWebhook] = useState(false);
-
-  const handleTestDarajaAuth = async () => {
-    setTestingDaraja(true);
-    setDarajaTestStatus(null);
-    try {
-      if (!darajaConfig.consumerKey || !darajaConfig.consumerSecret) {
-        throw new Error('Consumer Key and Consumer Secret are required to test authentication.');
-      }
-      if (!darajaConfig.shortcode) {
-        throw new Error('Business Shortcode (Paybill/Till) is required.');
-      }
-
-      await new Promise((r) => setTimeout(r, 600));
-      const simulatedToken = 'c2FmYXJpY29tX2RhcmFqYV9iZWFyZXJfdG9rZW5feHh4';
-      setDarajaTestStatus({
-        success: true,
-        message: `Authentication handshake successful! OAuth Bearer Token active for Shortcode ${darajaConfig.shortcode} (${darajaConfig.environment.toUpperCase()} mode).`,
-        token: simulatedToken,
-        expiresIn: '3599s',
-      });
-      showToast('Safaricom Daraja API 2.0 connection verified successfully!', 'success');
-    } catch (err: any) {
-      setDarajaTestStatus({
-        success: false,
-        message: err.message || 'Failed to authenticate with Daraja.',
-      });
-      showToast('Daraja test failed: ' + err.message, 'error');
-    } finally {
-      setTestingDaraja(false);
-    }
-  };
-
-  const handleLoadSandboxPresets = () => {
-    setDarajaConfig({
-      environment: 'sandbox',
-      consumerKey: 'GLCM_Daraja_Key_Sandbox2026',
-      consumerSecret: 'GLCM_Daraja_Secret_Sandbox2026',
-      passkey: 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-      shortcode: '174379',
-      initiatorName: 'testapi',
-      callbackUrl: 'https://gracia-learning-centre.ac.ke/api/mpesa/callback',
-    });
-    setHasUnsavedChanges(true);
-    showToast('Standard Safaricom Daraja Sandbox credentials loaded (Shortcode 174379)', 'info');
-  };
-
-  const handleCopyWebhook = () => {
-    const url = darajaConfig.callbackUrl || 'https://gracia-learning-centre.ac.ke/api/mpesa/callback';
-    navigator.clipboard?.writeText(url);
-    setCopiedWebhook(true);
-    showToast('Callback Webhook URL copied to clipboard!', 'info');
-    setTimeout(() => setCopiedWebhook(false), 2000);
-  };
 
   const isSerialSupported = printerService.isSerialSupported();
   const isBluetoothSupported = printerService.isBluetoothSupported();
@@ -317,11 +250,6 @@ export const SettingsView: React.FC = () => {
         },
       });
       setHasUnsavedChanges(false);
-
-      // Load Daraja API credentials from Firestore
-      darajaService.getDarajaConfig(school.id).then((cfg) => {
-        if (cfg) setDarajaConfig(cfg);
-      });
     }
   }, [school]);
 
@@ -405,11 +333,6 @@ export const SettingsView: React.FC = () => {
     setSaving(true);
     try {
       await schoolService.updateSchool(schoolId, formData);
-
-      // Save Daraja M-Pesa API Config
-      if (darajaConfig) {
-        await darajaService.saveDarajaConfig(schoolId, darajaConfig);
-      }
 
       // Also sync logo to website CMS if present
       if (formData.logoUrl) {
@@ -1109,110 +1032,6 @@ export const SettingsView: React.FC = () => {
                       />
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Daraja 2.0 API Developer Settings */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-                  <h3 className="font-bold text-sm text-slate-900">Safaricom Daraja API 2.0 Credentials (STK Push)</h3>
-                </div>
-                <Badge variant={darajaConfig.environment === 'live' ? 'success' : 'warning'} size="sm">
-                  {darajaConfig.environment.toUpperCase()} MODE
-                </Badge>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                Configure your Safaricom Daraja Developer credentials for real-time Lipa na M-Pesa STK Push prompts and C2B payment callbacks.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-                <div>
-                  <label className="font-semibold text-slate-700">Environment</label>
-                  <select
-                    value={darajaConfig.environment}
-                    onChange={(e) => {
-                      setDarajaConfig({ ...darajaConfig, environment: e.target.value as any });
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white font-bold"
-                  >
-                    <option value="sandbox">Sandbox (Testing / Simulator)</option>
-                    <option value="live">Production / Live</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700">Business Shortcode (Paybill / Till)</label>
-                  <input
-                    type="text"
-                    value={darajaConfig.shortcode}
-                    onChange={(e) => {
-                      setDarajaConfig({ ...darajaConfig, shortcode: e.target.value });
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono"
-                    placeholder="174379 or Your Paybill"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700">Initiator Name</label>
-                  <input
-                    type="text"
-                    value={darajaConfig.initiatorName || ''}
-                    onChange={(e) => {
-                      setDarajaConfig({ ...darajaConfig, initiatorName: e.target.value });
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
-                    placeholder="testapi or portal user"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700">Daraja Consumer Key</label>
-                  <input
-                    type="password"
-                    value={darajaConfig.consumerKey}
-                    onChange={(e) => {
-                      setDarajaConfig({ ...darajaConfig, consumerKey: e.target.value });
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono"
-                    placeholder="Consumer Key from Daraja Portal"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700">Daraja Consumer Secret</label>
-                  <input
-                    type="password"
-                    value={darajaConfig.consumerSecret}
-                    onChange={(e) => {
-                      setDarajaConfig({ ...darajaConfig, consumerSecret: e.target.value });
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono"
-                    placeholder="Consumer Secret from Daraja Portal"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-slate-700">Lipa na M-Pesa Online Passkey</label>
-                  <input
-                    type="password"
-                    value={darajaConfig.passkey}
-                    onChange={(e) => {
-                      setDarajaConfig({ ...darajaConfig, passkey: e.target.value });
-                      setHasUnsavedChanges(true);
-                    }}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl font-mono"
-                    placeholder="Passkey from Safaricom"
-                  />
                 </div>
               </div>
             </div>

@@ -5,11 +5,29 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { FeeStructure, Invoice, Payment, GradeLevel } from '../types';
+import { FeeStructure, Invoice, Payment, Student, GradeLevel } from '../types';
 import { studentService } from './studentService';
 import { cleanForFirestore } from '../utils/firestoreHelper';
+
+export interface BatchBillingOptions {
+  academicYear: string;
+  term: 'Term 1' | 'Term 2' | 'Term 3';
+  dueDate: string;
+  scope?: 'ALL' | 'GRADE' | 'SELECTED';
+  classLevel?: GradeLevel;
+  studentIds?: string[];
+  skipAlreadyBilled?: boolean;
+}
+
+export interface BatchBillingResult {
+  billedCount: number;
+  totalAmountBilled: number;
+  skippedCount: number;
+  classBreakdown: { classLevel: string; count: number; totalAmount: number }[];
+}
 
 export const DEFAULT_CBC_FEE_STRUCTURES: Omit<FeeStructure, 'schoolId' | 'createdAt'>[] = [
   {
@@ -351,6 +369,165 @@ export const feeService = {
     }
 
     return invoice;
+  },
+
+  /**
+   * Batch bill all students in the school or within a selected grade/selection.
+   * Uses chunked Firestore batch writes to issue invoices and update student balances.
+   */
+  async billAllStudents(
+    schoolId: string,
+    options: BatchBillingOptions
+  ): Promise<BatchBillingResult> {
+    const allStudents = await studentService.getStudents(schoolId);
+    
+    // Filter target students
+    let targetStudents = allStudents.filter((s) => s.status === 'ACTIVE');
+    if (options.scope === 'GRADE' && options.classLevel) {
+      targetStudents = targetStudents.filter((s) => s.currentClass === options.classLevel);
+    } else if (options.scope === 'SELECTED' && options.studentIds && options.studentIds.length > 0) {
+      targetStudents = targetStudents.filter((s) => options.studentIds!.includes(s.id));
+    }
+
+    if (targetStudents.length === 0) {
+      return { billedCount: 0, totalAmountBilled: 0, skippedCount: 0, classBreakdown: [] };
+    }
+
+    // Retrieve fee structures
+    const structures = await this.getFeeStructures(schoolId);
+    
+    // Check existing invoices if skipping already billed
+    const existingInvoices = await this.getInvoices(schoolId);
+    const alreadyBilledStudentIds = new Set<string>();
+    if (options.skipAlreadyBilled !== false) {
+      existingInvoices.forEach((inv) => {
+        if (inv.academicYear === options.academicYear && inv.term === options.term) {
+          alreadyBilledStudentIds.add(inv.studentId);
+        }
+      });
+    }
+
+    let billedCount = 0;
+    let totalAmountBilled = 0;
+    let skippedCount = 0;
+    const classCountMap: Record<string, { count: number; total: number }> = {};
+
+    const operations: {
+      invoice: Invoice;
+      studentId: string;
+      newBalance: number;
+    }[] = [];
+
+    const currentYear = options.academicYear || new Date().getFullYear().toString();
+    const defaultDueDate =
+      options.dueDate ||
+      new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    for (const student of targetStudents) {
+      if (options.skipAlreadyBilled !== false && alreadyBilledStudentIds.has(student.id)) {
+        skippedCount++;
+        continue;
+      }
+
+      // Match fee structure for student's class
+      const matchingStructure =
+        structures.find(
+          (fs) =>
+            fs.classLevel === student.currentClass &&
+            fs.academicYear === options.academicYear &&
+            fs.term === options.term
+        ) ||
+        structures.find((fs) => fs.classLevel === student.currentClass) ||
+        DEFAULT_CBC_FEE_STRUCTURES.find((dfs) => dfs.classLevel === student.currentClass);
+
+      let items: { description: string; amount: number }[] = [];
+      let totalAmount = 0;
+
+      if (matchingStructure && matchingStructure.items && matchingStructure.items.length > 0) {
+        items = matchingStructure.items.map((it) => ({
+          description: it.name,
+          amount: Number(it.amount) || 0,
+        }));
+        totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
+      } else {
+        // Fallback standard item
+        items = [{ description: `${student.currentClass} Standard CBC Term Fees`, amount: 35000 }];
+        totalAmount = 35000;
+      }
+
+      const invDocRef = doc(collection(db, 'schools', schoolId, 'invoices'));
+      const invNum = `INV/${currentYear}/${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const invoice: Invoice = {
+        id: invDocRef.id,
+        invoiceNumber: invNum,
+        schoolId,
+        studentId: student.id,
+        studentName: student.fullName,
+        admissionNumber: student.admissionNumber || '',
+        classLevel: student.currentClass,
+        stream: student.stream || '',
+        academicYear: options.academicYear,
+        term: options.term,
+        items,
+        totalAmount,
+        paidAmount: 0,
+        balance: totalAmount,
+        dueDate: defaultDueDate,
+        status: 'UNPAID',
+        createdAt: new Date().toISOString(),
+      };
+
+      const newStudentBalance = (student.totalBalance || 0) + totalAmount;
+
+      operations.push({
+        invoice,
+        studentId: student.id,
+        newBalance: newStudentBalance,
+      });
+
+      billedCount++;
+      totalAmountBilled += totalAmount;
+
+      if (!classCountMap[student.currentClass]) {
+        classCountMap[student.currentClass] = { count: 0, total: 0 };
+      }
+      classCountMap[student.currentClass].count += 1;
+      classCountMap[student.currentClass].total += totalAmount;
+    }
+
+    // Execute in chunked Firestore batches (150 students = 300 writes per batch, well below 500 limit)
+    const CHUNK_SIZE = 150;
+    for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+      const chunk = operations.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+
+      for (const op of chunk) {
+        const invRef = doc(db, 'schools', schoolId, 'invoices', op.invoice.id);
+        batch.set(invRef, cleanForFirestore(op.invoice));
+
+        const studentRef = doc(db, 'schools', schoolId, 'students', op.studentId);
+        batch.update(studentRef, {
+          totalBalance: op.newBalance,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      await batch.commit();
+    }
+
+    const classBreakdown = Object.entries(classCountMap).map(([classLevel, data]) => ({
+      classLevel,
+      count: data.count,
+      totalAmount: data.total,
+    }));
+
+    return {
+      billedCount,
+      totalAmountBilled,
+      skippedCount,
+      classBreakdown,
+    };
   },
 
   async syncStudentTransportFee(

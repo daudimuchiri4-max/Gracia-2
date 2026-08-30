@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { StudentProfileModal } from '../../components/ui/StudentProfileModal';
+import { BatchBillingModal } from '../../components/ui/BatchBillingModal';
 import {
   UserPlus,
   Users,
@@ -29,6 +30,8 @@ import {
   AlertTriangle,
   AlertCircle,
   CheckCircle,
+  Send,
+  DollarSign,
 } from 'lucide-react';
 
 const GRADE_LEVELS: GradeLevel[] = [
@@ -63,10 +66,21 @@ export const StudentsView: React.FC = () => {
   const [isPromoteModalOpen, setIsPromoteModalOpen] = useState<boolean>(false);
   const [targetPromotionClass, setTargetPromotionClass] = useState<GradeLevel>('Grade 7');
 
+  // Batch Billing Modal state
+  const [isBatchBillingOpen, setIsBatchBillingOpen] = useState<boolean>(false);
+  const [batchBillingScope, setBatchBillingScope] = useState<'ALL' | 'GRADE' | 'SELECTED'>('ALL');
+
   // Delete Modal state
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Delete All / Bulk Delete States
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState<boolean>(false);
+  const [isDeletingAll, setIsDeletingAll] = useState<boolean>(false);
+  const [deleteAllConfirmationInput, setDeleteAllConfirmationInput] = useState<string>('');
+  const [deleteAllScope, setDeleteAllScope] = useState<'ALL' | 'FILTERED'>('ALL');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
   // Form State for Add / Edit
   const [formData, setFormData] = useState({
@@ -232,6 +246,133 @@ export const StudentsView: React.FC = () => {
     }
   };
 
+  const handleOpenDeleteAllModal = (scope: 'ALL' | 'FILTERED' = 'ALL') => {
+    setDeleteAllScope(scope);
+    setDeleteAllConfirmationInput('');
+    setIsDeleteAllModalOpen(true);
+  };
+
+  const confirmDeleteAllStudents = async () => {
+    if (!school?.id) return;
+    const targetCount = deleteAllScope === 'FILTERED' ? filteredStudents.length : students.length;
+    if (targetCount === 0) {
+      showToast('No students to delete in selected scope.', 'info');
+      setIsDeleteAllModalOpen(false);
+      return;
+    }
+
+    setIsDeletingAll(true);
+    try {
+      let count = 0;
+      if (deleteAllScope === 'FILTERED') {
+        const ids = filteredStudents.map((s) => s.id);
+        count = await studentService.deleteStudentsBulk(school.id, ids);
+      } else {
+        count = await studentService.deleteAllStudents(school.id);
+      }
+
+      if (user) {
+        await auditService.logAction(
+          school.id,
+          { id: user.id, name: user.name, role: user.role },
+          'DELETE_ALL_STUDENTS',
+          'STUDENTS',
+          `Permanently deleted ${count} student records from school directory (Scope: ${deleteAllScope})`
+        );
+      }
+
+      showToast(`Successfully deleted ${count} student records permanently.`, 'success');
+      setIsDeleteAllModalOpen(false);
+      setDeleteAllConfirmationInput('');
+      setSelectedStudentIds([]);
+      await loadStudents();
+    } catch (e: any) {
+      showToast('Error deleting students: ' + e.message, 'error');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedStudentIds.length === filteredStudents.length && filteredStudents.length > 0) {
+      setSelectedStudentIds([]);
+    } else {
+      setSelectedStudentIds(filteredStudents.map((s) => s.id));
+    }
+  };
+
+  const handleToggleSelectStudent = (id: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!school?.id || selectedStudentIds.length === 0) return;
+    if (
+      !confirm(
+        `Are you sure you want to permanently delete the ${selectedStudentIds.length} selected learner(s)? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setIsDeletingAll(true);
+    try {
+      const count = await studentService.deleteStudentsBulk(school.id, selectedStudentIds);
+      if (user) {
+        await auditService.logAction(
+          school.id,
+          { id: user.id, name: user.name, role: user.role },
+          'DELETE_SELECTED_STUDENTS',
+          'STUDENTS',
+          `Permanently deleted ${count} selected student records`
+        );
+      }
+      showToast(`Successfully deleted ${count} selected student(s).`, 'success');
+      setSelectedStudentIds([]);
+      await loadStudents();
+    } catch (e: any) {
+      showToast('Error deleting selected students: ' + e.message, 'error');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
+  const handcodedStudents = students.filter((s) => studentService.isHandcodedStudent(s));
+
+  const handlePurgeHandcoded = async () => {
+    if (!school?.id) return;
+    if (
+      !confirm(
+        `Are you sure you want to remove all ${handcodedStudents.length} sample/handcoded students (e.g. Brian Mwangi, Jane Wambui, Trevor Otieno, Chelsea Cherop, Liam Zawadi) and associated dummy entries?`
+      )
+    ) {
+      return;
+    }
+
+    setIsDeletingAll(true);
+    try {
+      const purgedCount = await studentService.purgeHandcodedStudents(school.id);
+      if (user) {
+        await auditService.logAction(
+          school.id,
+          { id: user.id, name: user.name, role: user.role },
+          'PURGE_HANDCODED_STUDENTS',
+          'STUDENTS',
+          `Purged ${purgedCount} handcoded/sample student records and mock invoices/results`
+        );
+      }
+      showToast(`Removed ${purgedCount} handcoded student record(s) successfully!`, 'success');
+      setSelectedStudentIds([]);
+      await loadStudents();
+    } catch (e: any) {
+      showToast('Error removing handcoded students: ' + e.message, 'error');
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
   const handleArchive = async (student: Student) => {
     const nextStatus = student.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     const actionName = nextStatus === 'INACTIVE' ? 'Archive' : 'Reactivate';
@@ -326,6 +467,40 @@ export const StudentsView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap gap-2.5">
+          {handcodedStudents.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100 hover:border-amber-400"
+              icon={<Trash2 className="w-4 h-4 text-amber-700" />}
+              onClick={handlePurgeHandcoded}
+              disabled={loading || isDeletingAll}
+            >
+              Remove Handcoded Students ({handcodedStudents.length})
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-blue-900 border-blue-200 bg-blue-50/70 hover:bg-blue-100 hover:border-blue-300 font-bold shadow-xs"
+            icon={<Send className="w-4 h-4 text-blue-900" />}
+            onClick={() => {
+              setBatchBillingScope('ALL');
+              setIsBatchBillingOpen(true);
+            }}
+          >
+            Bill All Students
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+            icon={<Trash2 className="w-4 h-4 text-rose-600" />}
+            onClick={() => handleOpenDeleteAllModal('ALL')}
+            disabled={loading || students.length === 0}
+          >
+            Delete All Students
+          </Button>
           <Button variant="outline" size="sm" icon={<Download className="w-4 h-4" />} onClick={exportCSV}>
             Export CSV
           </Button>
@@ -425,6 +600,72 @@ export const StudentsView: React.FC = () => {
         </select>
       </div>
 
+      {/* Handcoded Sample Learners Detected Alert */}
+      {handcodedStudents.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200/80 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+          <div className="flex items-center gap-2.5 text-amber-900">
+            <div className="p-1.5 bg-amber-100 rounded-lg text-amber-800 shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold">Handcoded Sample Data Detected: </span>
+              <span className="text-amber-800">
+                {handcodedStudents.length} sample learner record{handcodedStudents.length > 1 ? 's' : ''} (e.g., Brian Mwangi, Jane Wambui) found in the database.
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={handlePurgeHandcoded}
+            disabled={isDeletingAll}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            {isDeletingAll ? 'Removing...' : `Purge ${handcodedStudents.length} Handcoded Student(s)`}
+          </button>
+        </div>
+      )}
+
+      {/* Multi-selection Action Banner */}
+      {selectedStudentIds.length > 0 && (
+        <div className="bg-rose-50/90 border border-rose-200 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2 text-rose-900 font-semibold">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-600 text-white text-[11px] font-bold">
+              {selectedStudentIds.length}
+            </span>
+            <span>
+              {selectedStudentIds.length} learner{selectedStudentIds.length > 1 ? 's' : ''} selected
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setBatchBillingScope('SELECTED');
+                setIsBatchBillingOpen(true);
+              }}
+              className="px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Bill Selected ({selectedStudentIds.length})
+            </button>
+            <button
+              onClick={() => setSelectedStudentIds([])}
+              className="px-3 py-1.5 text-slate-600 hover:text-slate-900 hover:bg-white/80 rounded-xl transition-colors font-medium border border-slate-200"
+            >
+              Deselect All
+            </button>
+            <button
+              onClick={handleDeleteSelected}
+              disabled={isDeletingAll}
+              className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {isDeletingAll ? 'Deleting...' : `Delete Selected (${selectedStudentIds.length})`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Students Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         {loading ? (
@@ -440,6 +681,18 @@ export const StudentsView: React.FC = () => {
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                 <tr>
+                  <th className="p-3.5 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredStudents.length > 0 &&
+                        selectedStudentIds.length === filteredStudents.length
+                      }
+                      onChange={handleToggleSelectAll}
+                      className="rounded text-blue-900 focus:ring-blue-800 h-4 w-4 cursor-pointer"
+                      title="Select all filtered students"
+                    />
+                  </th>
                   <th className="p-3.5">Admission No</th>
                   <th className="p-3.5">Learner Name</th>
                   <th className="p-3.5">Gender</th>
@@ -451,121 +704,137 @@ export const StudentsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredStudents.map((std) => (
-                  <tr key={std.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="p-3.5 font-bold text-slate-900">{std.admissionNumber}</td>
-                    <td className="p-3.5">
-                      <button
-                        onClick={() => {
-                          setSelectedStudent(std);
-                          setIsViewModalOpen(true);
-                        }}
-                        className="font-semibold text-slate-900 hover:text-blue-900 text-left hover:underline cursor-pointer block"
-                      >
-                        {std.fullName}
-                      </button>
-                      {std.allergies && (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 font-medium">
-                          <HeartPulse className="w-3 h-3" /> Allergy: {std.allergies}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3.5 text-slate-600 font-medium">{std.gender}</td>
-                    <td className="p-3.5">
-                      <Badge variant="primary" size="sm">
-                        {std.currentClass} • {std.stream}
-                      </Badge>
-                    </td>
-                    <td className="p-3.5">
-                      <div className="font-medium text-slate-800">{std.parentName || 'N/A'}</div>
-                      <div className="text-[10px] text-slate-400">{std.parentPhone}</div>
-                    </td>
-                    <td className="p-3.5">
-                      <Badge variant={std.status === 'ACTIVE' ? 'success' : 'neutral'} size="sm">
-                        {std.status}
-                      </Badge>
-                    </td>
-                    <td className="p-3.5 font-bold text-slate-900">
-                      {std.totalBalance && std.totalBalance > 0 ? (
-                        <span className="text-rose-600">
-                          {school?.currencySymbol || 'KSh'} {std.totalBalance.toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className="text-emerald-700">Cleared</span>
-                      )}
-                    </td>
-                    <td className="p-3.5 text-right space-x-1">
-                      <button
-                        onClick={() => {
-                          setSelectedStudent(std);
-                          setIsViewModalOpen(true);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                        title="View Full Profile"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedStudent(std);
-                          setFormData({
-                            admissionNumber: std.admissionNumber,
-                            assessmentNumber: std.assessmentNumber || std.upiNumber || '',
-                            kemisNumber: std.kemisNumber || std.nemisNumber || '',
-                            upiNumber: std.assessmentNumber || std.upiNumber || '',
-                            nemisNumber: std.kemisNumber || std.nemisNumber || '',
-                            firstName: std.firstName,
-                            middleName: std.middleName || '',
-                            lastName: std.lastName,
-                            gender: std.gender,
-                            dateOfBirth: std.dateOfBirth,
-                            birthCertNumber: std.birthCertNumber || '',
-                            nationality: std.nationality || 'Kenyan',
-                            religion: std.religion || 'Christian',
-                            admissionDate: std.admissionDate,
-                            currentClass: std.currentClass,
-                            stream: std.stream,
-                            status: std.status,
-                            parentName: std.parentName || '',
-                            parentPhone: std.parentPhone || '',
-                            parentEmail: std.parentEmail || '',
-                            parentRelationship: std.parentRelationship || 'Father',
-                            emergencyContact: std.emergencyContact || '',
-                            emergencyPhone: std.emergencyPhone || '',
-                            allergies: std.allergies || '',
-                            medicalConditions: std.medicalConditions || '',
-                            bloodGroup: std.bloodGroup || 'O+',
-                            isBoarder: std.isBoarder || false,
-                            transportRouteId: std.transportRouteId || '',
-                          });
-                          setIsAddModalOpen(true);
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                        title="Edit Student Profile"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleArchive(std)}
-                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                          std.status === 'ACTIVE'
-                            ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
-                            : 'text-amber-600 bg-amber-50 hover:bg-amber-100'
-                        }`}
-                        title={std.status === 'ACTIVE' ? 'Archive / Deactivate Student' : 'Reactivate Student'}
-                      >
-                        <Archive className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleOpenDeleteModal(std)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Student Permanently"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredStudents.map((std) => {
+                  const isSelected = selectedStudentIds.includes(std.id);
+                  return (
+                    <tr
+                      key={std.id}
+                      className={`hover:bg-slate-50/70 transition-colors ${
+                        isSelected ? 'bg-rose-50/40' : ''
+                      }`}
+                    >
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectStudent(std.id)}
+                          className="rounded text-blue-900 focus:ring-blue-800 h-4 w-4 cursor-pointer"
+                        />
+                      </td>
+                      <td className="p-3.5 font-bold text-slate-900">{std.admissionNumber}</td>
+                      <td className="p-3.5">
+                        <button
+                          onClick={() => {
+                            setSelectedStudent(std);
+                            setIsViewModalOpen(true);
+                          }}
+                          className="font-semibold text-slate-900 hover:text-blue-900 text-left hover:underline cursor-pointer block"
+                        >
+                          {std.fullName}
+                        </button>
+                        {std.allergies && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 font-medium">
+                            <HeartPulse className="w-3 h-3" /> Allergy: {std.allergies}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3.5 text-slate-600 font-medium">{std.gender}</td>
+                      <td className="p-3.5">
+                        <Badge variant="primary" size="sm">
+                          {std.currentClass} • {std.stream}
+                        </Badge>
+                      </td>
+                      <td className="p-3.5">
+                        <div className="font-medium text-slate-800">{std.parentName || 'N/A'}</div>
+                        <div className="text-[10px] text-slate-400">{std.parentPhone}</div>
+                      </td>
+                      <td className="p-3.5">
+                        <Badge variant={std.status === 'ACTIVE' ? 'success' : 'neutral'} size="sm">
+                          {std.status}
+                        </Badge>
+                      </td>
+                      <td className="p-3.5 font-bold text-slate-900">
+                        {std.totalBalance && std.totalBalance > 0 ? (
+                          <span className="text-rose-600">
+                            {school?.currencySymbol || 'KSh'} {std.totalBalance.toLocaleString()}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700">Cleared</span>
+                        )}
+                      </td>
+                      <td className="p-3.5 text-right space-x-1">
+                        <button
+                          onClick={() => {
+                            setSelectedStudent(std);
+                            setIsViewModalOpen(true);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                          title="View Full Profile"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedStudent(std);
+                            setFormData({
+                              admissionNumber: std.admissionNumber,
+                              assessmentNumber: std.assessmentNumber || std.upiNumber || '',
+                              kemisNumber: std.kemisNumber || std.nemisNumber || '',
+                              upiNumber: std.assessmentNumber || std.upiNumber || '',
+                              nemisNumber: std.kemisNumber || std.nemisNumber || '',
+                              firstName: std.firstName,
+                              middleName: std.middleName || '',
+                              lastName: std.lastName,
+                              gender: std.gender,
+                              dateOfBirth: std.dateOfBirth,
+                              birthCertNumber: std.birthCertNumber || '',
+                              nationality: std.nationality || 'Kenyan',
+                              religion: std.religion || 'Christian',
+                              admissionDate: std.admissionDate,
+                              currentClass: std.currentClass,
+                              stream: std.stream,
+                              status: std.status,
+                              parentName: std.parentName || '',
+                              parentPhone: std.parentPhone || '',
+                              parentEmail: std.parentEmail || '',
+                              parentRelationship: std.parentRelationship || 'Father',
+                              emergencyContact: std.emergencyContact || '',
+                              emergencyPhone: std.emergencyPhone || '',
+                              allergies: std.allergies || '',
+                              medicalConditions: std.medicalConditions || '',
+                              bloodGroup: std.bloodGroup || 'O+',
+                              isBoarder: std.isBoarder || false,
+                              transportRouteId: std.transportRouteId || '',
+                            });
+                            setIsAddModalOpen(true);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Student Profile"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleArchive(std)}
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            std.status === 'ACTIVE'
+                              ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
+                              : 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+                          }`}
+                          title={std.status === 'ACTIVE' ? 'Archive / Deactivate Student' : 'Reactivate Student'}
+                        >
+                          <Archive className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenDeleteModal(std)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Delete Student Permanently"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1013,6 +1282,133 @@ export const StudentsView: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Delete All Students Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteAllModalOpen}
+        onClose={() => {
+          if (!isDeletingAll) setIsDeleteAllModalOpen(false);
+        }}
+        title="Delete All Student Records"
+        subtitle="Permanent batch deletion from the school registry"
+        maxWidth="lg"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Critical Warning Callout */}
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3.5 text-rose-900 shadow-xs">
+            <div className="p-2 bg-rose-100 rounded-xl shrink-0 text-rose-700">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <p className="font-bold text-rose-900 text-sm">Danger: Irreversible Action</p>
+              <p className="text-rose-800 leading-relaxed">
+                You are about to permanently delete student profiles, admission numbers, KEMIS/NEMIS links, and student fee ledgers. This action <strong>CANNOT</strong> be undone.
+              </p>
+            </div>
+          </div>
+
+          {/* Scope Selector */}
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+            <label className="font-bold text-slate-800 block">Select Deletion Scope:</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setDeleteAllScope('ALL')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  deleteAllScope === 'ALL'
+                    ? 'border-rose-500 bg-rose-50/50 ring-2 ring-rose-500/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="font-bold text-slate-900">All School Learners</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Entire school roster ({students.length} total students)
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeleteAllScope('FILTERED')}
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                  deleteAllScope === 'FILTERED'
+                    ? 'border-rose-500 bg-rose-50/50 ring-2 ring-rose-500/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="font-bold text-slate-900">Current Filtered List</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  Matching current grade/search ({filteredStudents.length} students)
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Breakdown summary */}
+          <div className="p-3 bg-slate-100/70 rounded-xl text-slate-700 flex items-center justify-between font-medium">
+            <span>Total records to be deleted:</span>
+            <span className="font-extrabold text-rose-600 text-sm">
+              {deleteAllScope === 'ALL' ? students.length : filteredStudents.length} Learners
+            </span>
+          </div>
+
+          {/* Confirmation Input Guard */}
+          <div className="space-y-1.5 pt-1">
+            <label className="font-semibold text-slate-700 block">
+              To confirm, type <strong className="text-rose-600 font-mono bg-rose-50 px-1 py-0.5 rounded border border-rose-200">DELETE</strong> below:
+            </label>
+            <input
+              type="text"
+              placeholder="Type DELETE to enable confirmation"
+              value={deleteAllConfirmationInput}
+              onChange={(e) => setDeleteAllConfirmationInput(e.target.value)}
+              disabled={isDeletingAll}
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 font-medium focus:ring-2 focus:ring-rose-500 focus:outline-none placeholder:text-slate-400"
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-3 border-t border-slate-200">
+            <Button
+              variant="outline"
+              type="button"
+              disabled={isDeletingAll}
+              onClick={() => setIsDeleteAllModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <button
+              type="button"
+              disabled={
+                isDeletingAll ||
+                (deleteAllScope === 'ALL' && students.length === 0) ||
+                (deleteAllScope === 'FILTERED' && filteredStudents.length === 0) ||
+                deleteAllConfirmationInput.trim().toUpperCase() !== 'DELETE'
+              }
+              onClick={confirmDeleteAllStudents}
+              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl flex items-center gap-2 transition-all cursor-pointer shadow-sm"
+            >
+              <Trash2 className="w-4 h-4" />
+              {isDeletingAll
+                ? 'Deleting Records...'
+                : `Permanently Delete ${
+                    deleteAllScope === 'ALL' ? students.length : filteredStudents.length
+                  } Students`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Batch Billing Modal */}
+      <BatchBillingModal
+        isOpen={isBatchBillingOpen}
+        onClose={() => setIsBatchBillingOpen(false)}
+        onSuccess={() => {
+          setSelectedStudentIds([]);
+          loadStudents();
+        }}
+        initialScope={batchBillingScope}
+        selectedStudentIds={selectedStudentIds}
+      />
     </div>
   );
 };

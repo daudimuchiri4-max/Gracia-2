@@ -487,7 +487,7 @@ export const schoolService = {
       });
     }
 
-    // 5. Parents
+    // 5. Parents (clean slate with no hardcoded student relations)
     const parents = [
       {
         id: 'par-01',
@@ -498,7 +498,7 @@ export const schoolService = {
         idNumber: '24918231',
         occupation: 'Medical Doctor',
         address: 'Kasarani Mwiki, Nairobi',
-        childrenIds: ['std-01', 'std-02'],
+        childrenIds: [],
         createdAt: now,
       },
       {
@@ -510,7 +510,7 @@ export const schoolService = {
         idNumber: '28192019',
         occupation: 'Aviation Logistics Manager',
         address: 'Sunton Estate, Kasarani',
-        childrenIds: ['std-03'],
+        childrenIds: [],
         createdAt: now,
       },
       {
@@ -522,7 +522,7 @@ export const schoolService = {
         idNumber: '31092812',
         occupation: 'Civil Engineer',
         address: 'Hunters Phase 2, Kasarani Mwiki',
-        childrenIds: ['std-04'],
+        childrenIds: [],
         createdAt: now,
       },
     ];
@@ -531,186 +531,7 @@ export const schoolService = {
       await setDoc(doc(db, 'schools', schoolId, 'parents', p.id), p);
     }
 
-    // 6. Students across different classes
-    const students = [
-      {
-        id: 'std-01',
-        schoolId,
-        admissionNumber: 'GLC/2026/001',
-        assessmentNumber: 'ASN-9201928',
-        kemisNumber: 'KEMIS-2026-001',
-        upiNumber: 'ASN-9201928',
-        nemisNumber: 'KEMIS-2026-001',
-        firstName: 'Brian',
-        middleName: 'Mwangi',
-        lastName: 'Kamau',
-        fullName: 'Brian Mwangi Kamau',
-        gender: 'MALE',
-        dateOfBirth: '2014-04-12',
-        birthCertNumber: 'BC-9201928',
-        nationality: 'Kenyan',
-        religion: 'Christian',
-        admissionDate: '2026-01-05',
-        currentClass: 'Grade 6',
-        stream: 'East',
-        status: 'ACTIVE',
-        previousSchool: 'Kasarani Primary School',
-        residentialAddress: 'Kasarani Mwiki, Nairobi',
-        parentId: 'par-01',
-        parentName: 'Dr. Joseph Kamau Njoroge',
-        parentPhone: '+254 722 345 678',
-        parentEmail: 'joseph.kamau@gmail.com',
-        parentRelationship: 'Father',
-        emergencyContact: 'Mary Kamau (Mother)',
-        emergencyPhone: '+254 721 999 111',
-        bloodGroup: 'O+',
-        allergies: 'Peanuts',
-        isBoarder: false,
-        transportRouteId: 'rt-01',
-        transportRouteName: 'Route 1: Kasarani - Sunton - Mwiki',
-        totalBalance: 12500,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'std-02',
-        schoolId,
-        admissionNumber: 'GLC/2026/002',
-        assessmentNumber: 'ASN-1102938',
-        kemisNumber: 'KEMIS-2026-002',
-        upiNumber: 'ASN-1102938',
-        nemisNumber: 'KEMIS-2026-002',
-        firstName: 'Jane',
-        middleName: 'Wambui',
-        lastName: 'Kamau',
-        fullName: 'Jane Wambui Kamau',
-        gender: 'FEMALE',
-        dateOfBirth: '2020-08-19',
-        birthCertNumber: 'BC-1102938',
-        nationality: 'Kenyan',
-        religion: 'Christian',
-        admissionDate: '2026-01-05',
-        currentClass: 'PP2',
-        stream: 'Stars',
-        status: 'ACTIVE',
-        residentialAddress: 'Kasarani Mwiki, Nairobi',
-        parentId: 'par-01',
-        parentName: 'Dr. Joseph Kamau Njoroge',
-        parentPhone: '+254 722 345 678',
-        parentEmail: 'joseph.kamau@gmail.com',
-        parentRelationship: 'Father',
-        bloodGroup: 'O+',
-        isBoarder: false,
-        totalBalance: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'std-03',
-        schoolId,
-        admissionNumber: 'GLC/2026/003',
-        assessmentNumber: 'ASN-8839201',
-        kemisNumber: 'KEMIS-2026-003',
-        upiNumber: 'ASN-8839201',
-        nemisNumber: 'KEMIS-2026-003',
-        firstName: 'Trevor',
-        middleName: 'Otieno',
-        lastName: 'Omondi',
-        fullName: 'Trevor Otieno Omondi',
-        gender: 'MALE',
-        dateOfBirth: '2013-11-03',
-        birthCertNumber: 'BC-8839201',
-        nationality: 'Kenyan',
-        religion: 'Christian',
-        admissionDate: '2026-01-05',
-        currentClass: 'Grade 7',
-        stream: 'Alpha',
-        status: 'ACTIVE',
-        residentialAddress: 'Sunton Estate, Kasarani',
-        parentId: 'par-02',
-        parentName: 'Mercy Akinyi Omondi',
-        parentPhone: '+254 733 987 654',
-        parentEmail: 'mercy.omondi@kenyaairways.com',
-        parentRelationship: 'Mother',
-        bloodGroup: 'A+',
-        specialNeeds: 'Wears corrective eyeglasses',
-        isBoarder: false,
-        totalBalance: 24000,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'std-04',
-        schoolId,
-        admissionNumber: 'GLC/2026/004',
-        assessmentNumber: 'ASN-7728192',
-        kemisNumber: 'KEMIS-2026-004',
-        upiNumber: 'ASN-7728192',
-        nemisNumber: 'KEMIS-2026-004',
-        firstName: 'Chelsea',
-        middleName: 'Cherop',
-        lastName: 'Rono',
-        fullName: 'Chelsea Cherop Rono',
-        gender: 'FEMALE',
-        dateOfBirth: '2016-02-14',
-        birthCertNumber: 'BC-7728192',
-        nationality: 'Kenyan',
-        religion: 'Christian',
-        admissionDate: '2026-01-05',
-        currentClass: 'Grade 4',
-        stream: 'East',
-        status: 'ACTIVE',
-        residentialAddress: 'Hunters Phase 2, Kasarani Mwiki',
-        parentId: 'par-03',
-        parentName: 'Eng. Dennis Kipchumba Rono',
-        parentPhone: '+254 712 555 999',
-        parentEmail: 'dennis.rono@geothermal.co.ke',
-        parentRelationship: 'Father',
-        bloodGroup: 'B+',
-        isBoarder: false,
-        totalBalance: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'std-05',
-        schoolId,
-        admissionNumber: 'GLC/2026/005',
-        assessmentNumber: 'ASN-9948201',
-        kemisNumber: 'KEMIS-2026-005',
-        upiNumber: 'ASN-9948201',
-        nemisNumber: 'KEMIS-2026-005',
-        firstName: 'Liam',
-        middleName: 'Zawadi',
-        lastName: 'Mutiso',
-        fullName: 'Liam Zawadi Mutiso',
-        gender: 'MALE',
-        dateOfBirth: '2022-05-10',
-        birthCertNumber: 'BC-9948201',
-        nationality: 'Kenyan',
-        admissionDate: '2026-01-05',
-        currentClass: 'Playgroup',
-        stream: 'Sunflowers',
-        status: 'ACTIVE',
-        residentialAddress: 'Clay City, Kasarani Mwiki',
-        parentId: 'par-01',
-        parentName: 'Dr. Joseph Kamau Njoroge',
-        parentPhone: '+254 722 345 678',
-        parentEmail: 'joseph.kamau@gmail.com',
-        parentRelationship: 'Father',
-        bloodGroup: 'O+',
-        isBoarder: false,
-        totalBalance: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ];
-
-    for (const std of students) {
-      await setDoc(doc(db, 'schools', schoolId, 'students', std.id), std);
-    }
-
-    // 7. Fee Structures
+    // 6. Fee Structures
     const feeStructures = [
       {
         id: 'fs-g6-2026-t1',
@@ -750,56 +571,7 @@ export const schoolService = {
       await setDoc(doc(db, 'schools', schoolId, 'feeStructures', fs.id), fs);
     }
 
-    // 8. Invoices and Payments for Brian Kamau
-    const invoiceBrian = {
-      id: 'inv-2026-001',
-      invoiceNumber: 'INV/2026/001',
-      schoolId,
-      studentId: 'std-01',
-      studentName: 'Brian Mwangi Kamau',
-      admissionNumber: 'GLCM/2026/001',
-      classLevel: 'Grade 6',
-      stream: 'East',
-      academicYear: '2026',
-      term: 'Term 1',
-      items: [
-        { description: 'Term 1 Tuition Fee', amount: 35000 },
-        { description: 'CBC Learning Materials', amount: 6500 },
-        { description: 'Lunch Program (Term 1)', amount: 12000 },
-        { description: 'Activity & Swimming', amount: 4500 },
-        { description: 'Assessment Fee', amount: 2000 },
-      ],
-      totalAmount: 60000,
-      paidAmount: 47500,
-      balance: 12500,
-      dueDate: '2026-02-15',
-      status: 'PARTIALLY_PAID',
-      createdAt: '2026-01-05T08:00:00.000Z',
-    };
-    await setDoc(doc(db, 'schools', schoolId, 'invoices', invoiceBrian.id), invoiceBrian);
-
-    const paymentBrian = {
-      id: 'pay-2026-001',
-      receiptNumber: 'REC/2026/0049',
-      schoolId,
-      invoiceId: 'inv-2026-001',
-      studentId: 'std-01',
-      studentName: 'Brian Mwangi Kamau',
-      admissionNumber: 'GLCM/2026/001',
-      parentName: 'Dr. Joseph Kamau Njoroge',
-      parentPhone: '+254 722 345 678',
-      amount: 47500,
-      paymentDate: '2026-01-08',
-      paymentMethod: 'MPESA',
-      transactionReference: 'QK78923KLJ',
-      cashierName: 'Sarah Amina Hassan',
-      cashierId: 'stf-05',
-      notes: 'Term 1 partial school fees paid via Lipa na M-Pesa Till',
-      createdAt: '2026-01-08T10:14:20.000Z',
-    };
-    await setDoc(doc(db, 'schools', schoolId, 'payments', paymentBrian.id), paymentBrian);
-
-    // 9. Assessments & CBC Results
+    // 7. Assessments Catalog Template
     const assessmentMidTerm = {
       id: 'ass-2026-t1-mid',
       schoolId,
@@ -817,31 +589,6 @@ export const schoolService = {
       createdAt: now,
     };
     await setDoc(doc(db, 'schools', schoolId, 'assessments', assessmentMidTerm.id), assessmentMidTerm);
-
-    const resultBrianMath = {
-      id: 'res-brian-math',
-      assessmentId: 'ass-2026-t1-mid',
-      schoolId,
-      studentId: 'std-01',
-      studentName: 'Brian Mwangi Kamau',
-      admissionNumber: 'GLCM/2026/001',
-      classLevel: 'Grade 6',
-      stream: 'East',
-      subjectName: 'Mathematics',
-      score: 86,
-      maxScore: 100,
-      percentage: 86,
-      grade: 'A',
-      cbcRating: 'EE', // Exceeding Expectations
-      strandFeedback: [
-        { strand: 'Numbers & Operations', rating: 'EE', comment: 'Exceptional speed in prime factorization and decimals' },
-        { strand: 'Algebra & Patterns', rating: 'ME', comment: 'Meets expectations in forming linear equations' },
-        { strand: 'Measurement & Geometry', rating: 'EE', comment: 'Accurate angle calculation and perimeter synthesis' },
-      ],
-      teacherComment: 'Brian demonstrates deep mathematical reasoning and helps peers in group work.',
-      updatedAt: now,
-    };
-    await setDoc(doc(db, 'schools', schoolId, 'results', resultBrianMath.id), resultBrianMath);
 
     // 10. POS & Inventory
     const posProducts = [

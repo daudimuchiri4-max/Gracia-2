@@ -5,6 +5,7 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  writeBatch,
   query,
   where,
   orderBy,
@@ -236,6 +237,115 @@ export const studentService = {
   async deleteStudent(schoolId: string, studentId: string): Promise<void> {
     const docRef = doc(db, 'schools', schoolId, 'students', studentId);
     await deleteDoc(docRef);
+  },
+
+  /**
+   * Permanently delete all student records for a school
+   */
+  async deleteAllStudents(schoolId: string): Promise<number> {
+    const colRef = collection(db, 'schools', schoolId, 'students');
+    const snap = await getDocs(colRef);
+    if (snap.empty) return 0;
+
+    const docs = snap.docs;
+    const chunkSize = 400;
+    for (let i = 0; i < docs.length; i += chunkSize) {
+      const batch = writeBatch(db);
+      const chunk = docs.slice(i, i + chunkSize);
+      for (const d of chunk) {
+        batch.delete(d.ref);
+      }
+      await batch.commit();
+    }
+    return docs.length;
+  },
+
+  /**
+   * Permanently delete multiple selected students by ID in batch
+   */
+  async deleteStudentsBulk(schoolId: string, studentIds: string[]): Promise<number> {
+    if (!studentIds || studentIds.length === 0) return 0;
+    const chunkSize = 400;
+    for (let i = 0; i < studentIds.length; i += chunkSize) {
+      const batch = writeBatch(db);
+      const chunk = studentIds.slice(i, i + chunkSize);
+      for (const sid of chunk) {
+        const docRef = doc(db, 'schools', schoolId, 'students', sid);
+        batch.delete(docRef);
+      }
+      await batch.commit();
+    }
+    return studentIds.length;
+  },
+
+  /**
+   * Helper to check if a student record is one of the initial handcoded sample students
+   */
+  isHandcodedStudent(student: Partial<Student>): boolean {
+    if (!student) return false;
+    const handcodedIds = ['std-01', 'std-02', 'std-03', 'std-04', 'std-05'];
+    if (student.id && handcodedIds.includes(student.id)) return true;
+
+    const handcodedAdmNos = [
+      'GLC/2026/001',
+      'GLC/2026/002',
+      'GLC/2026/003',
+      'GLC/2026/004',
+      'GLC/2026/005',
+      'GLCM/2026/001',
+    ];
+    if (
+      student.admissionNumber &&
+      handcodedAdmNos.includes(student.admissionNumber.trim().toUpperCase())
+    ) {
+      return true;
+    }
+
+    const handcodedNames = [
+      'Brian Mwangi Kamau',
+      'Jane Wambui Kamau',
+      'Trevor Otieno Omondi',
+      'Chelsea Cherop Rono',
+      'Liam Zawadi Mutiso',
+    ].map((n) => n.toLowerCase());
+
+    if (student.fullName && handcodedNames.includes(student.fullName.trim().toLowerCase())) {
+      return true;
+    }
+
+    return false;
+  },
+
+  /**
+   * Remove all handcoded / demo sample students from the database
+   */
+  async purgeHandcodedStudents(schoolId: string): Promise<number> {
+    const colRef = collection(db, 'schools', schoolId, 'students');
+    const snap = await getDocs(colRef);
+    if (snap.empty) return 0;
+
+    const targetDocs = snap.docs.filter((d) => {
+      const data = d.data() as Student;
+      return this.isHandcodedStudent({ ...data, id: d.id });
+    });
+
+    if (targetDocs.length === 0) return 0;
+
+    const batch = writeBatch(db);
+    for (const d of targetDocs) {
+      batch.delete(d.ref);
+    }
+
+    // Also clean up any demo invoices, payments, or results referencing std-01
+    const dummyInvoiceRef = doc(db, 'schools', schoolId, 'invoices', 'inv-2026-001');
+    const dummyPaymentRef = doc(db, 'schools', schoolId, 'payments', 'pay-2026-001');
+    const dummyResultRef = doc(db, 'schools', schoolId, 'results', 'res-brian-math');
+    batch.delete(dummyInvoiceRef);
+    batch.delete(dummyPaymentRef);
+    batch.delete(dummyResultRef);
+
+    await batch.commit();
+    return targetDocs.length;
   },
 
   async promoteStudents(schoolId: string, studentIds: string[], nextClass: GradeLevel): Promise<void> {
