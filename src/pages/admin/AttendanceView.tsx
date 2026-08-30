@@ -93,7 +93,8 @@ export const AttendanceView: React.FC = () => {
 
   // Roll-Call State
   const [selectedClass, setSelectedClass] = useState<GradeLevel>('Grade 6');
-  const [selectedStream, setSelectedStream] = useState<string>('East');
+  const [selectedStream, setSelectedStream] = useState<string>('ALL');
+  const [rollCallSearch, setRollCallSearch] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [students, setStudents] = useState<Student[]>([]);
   const [allSchoolStudents, setAllSchoolStudents] = useState<Student[]>([]);
@@ -102,6 +103,11 @@ export const AttendanceView: React.FC = () => {
   >({});
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
+
+  // Badge Filter State
+  const [badgeClassFilter, setBadgeClassFilter] = useState<string>('ALL');
+  const [badgeStreamFilter, setBadgeStreamFilter] = useState<string>('ALL');
+  const [badgeSearch, setBadgeSearch] = useState<string>('');
 
   // QR Scanner State
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -289,6 +295,17 @@ export const AttendanceView: React.FC = () => {
     try {
       const all = await studentService.getStudents(school!.id);
       setAllSchoolStudents(all);
+
+      if (all.length > 0) {
+        // If current selectedClass has 0 students, pick the first class that has enrolled learners
+        const currentCount = all.filter((s) => s.currentClass === selectedClass).length;
+        if (currentCount === 0) {
+          const firstWithStudents = GRADE_LEVELS.find((g) => all.some((s) => s.currentClass === g));
+          if (firstWithStudents) {
+            setSelectedClass(firstWithStudents);
+          }
+        }
+      }
     } catch (e) {
       console.warn('Error loading all students:', e);
     }
@@ -297,10 +314,11 @@ export const AttendanceView: React.FC = () => {
   const loadClassStudents = async () => {
     setLoading(true);
     try {
-      const list = await studentService.getStudents(school!.id, {
-        classLevel: selectedClass,
-        stream: selectedStream,
-      });
+      const queryOptions = selectedStream === 'ALL'
+        ? { classLevel: selectedClass }
+        : { classLevel: selectedClass, stream: selectedStream };
+
+      const list = await studentService.getStudents(school!.id, queryOptions);
       setStudents(list);
 
       const existingRecords = await attendanceService.getAttendanceRecords(school!.id, {
@@ -308,9 +326,11 @@ export const AttendanceView: React.FC = () => {
         date: selectedDate,
       });
 
-      const matched = existingRecords.find(
-        (r) => r.stream?.toLowerCase() === selectedStream.toLowerCase()
-      );
+      const matched = selectedStream === 'ALL'
+        ? existingRecords[0]
+        : existingRecords.find(
+            (r) => r.stream?.toLowerCase() === selectedStream.toLowerCase()
+          );
 
       const initialStatus: Record<
         string,
@@ -318,7 +338,10 @@ export const AttendanceView: React.FC = () => {
       > = {};
 
       list.forEach((s) => {
-        const foundEntry = matched?.entries.find((e) => e.studentId === s.id);
+        const foundEntry =
+          matched?.entries.find((e) => e.studentId === s.id) ||
+          existingRecords.flatMap((r) => r.entries).find((e) => e.studentId === s.id);
+
         initialStatus[s.id] = {
           status: foundEntry ? foundEntry.status : 'PRESENT',
           remarks: foundEntry?.remarks || '',
@@ -345,6 +368,10 @@ export const AttendanceView: React.FC = () => {
   };
 
   const handleSaveAttendance = async () => {
+    if (students.length === 0) {
+      showToast('No students to save attendance for.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const entries = students.map((s) => ({
@@ -355,10 +382,12 @@ export const AttendanceView: React.FC = () => {
         remarks: statusMap[s.id]?.remarks || '',
       }));
 
+      const streamToSave = selectedStream === 'ALL' ? (students[0]?.stream || 'Main') : selectedStream;
+
       await attendanceService.saveAttendance(school!.id, {
         date: selectedDate,
         classLevel: selectedClass,
-        stream: selectedStream,
+        stream: streamToSave,
         recordedBy: user?.fullName || 'Teacher on Duty',
         entries,
       });
@@ -382,7 +411,7 @@ export const AttendanceView: React.FC = () => {
       }
 
       showToast(
-        `Attendance for ${selectedClass} (${selectedStream}) saved successfully!`,
+        `Attendance for ${selectedClass} (${selectedStream === 'ALL' ? 'All Streams' : selectedStream}) saved successfully!`,
         'success'
       );
     } catch (e: any) {
@@ -1255,6 +1284,36 @@ export const AttendanceView: React.FC = () => {
   const lateCount = statusList.filter((v) => v.status === 'LATE').length;
   const sickCount = statusList.filter((v) => v.status === 'EXCUSED').length;
 
+  const classStudentsFromAll = allSchoolStudents.filter((s) => s.currentClass === selectedClass);
+  const classStreams = Array.from(
+    new Set(classStudentsFromAll.map((s) => s.stream?.trim()).filter(Boolean))
+  ) as string[];
+  const dynamicStreams = Array.from(new Set([...classStreams, 'East', 'West', 'North', 'Blue', 'Red']));
+
+  const filteredRollCallStudents = students.filter((st) => {
+    if (!rollCallSearch.trim()) return true;
+    const q = rollCallSearch.toLowerCase().trim();
+    return (
+      st.fullName?.toLowerCase().includes(q) ||
+      st.admissionNumber?.toLowerCase().includes(q) ||
+      st.assessmentNumber?.toLowerCase().includes(q) ||
+      st.upiNumber?.toLowerCase().includes(q)
+    );
+  });
+
+  const badgeStudents = allSchoolStudents.filter((st) => {
+    if (badgeClassFilter !== 'ALL' && st.currentClass !== badgeClassFilter) return false;
+    if (badgeStreamFilter !== 'ALL' && (st.stream || '').toLowerCase() !== badgeStreamFilter.toLowerCase()) return false;
+    if (badgeSearch.trim()) {
+      const q = badgeSearch.toLowerCase().trim();
+      return (
+        st.fullName?.toLowerCase().includes(q) ||
+        st.admissionNumber?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
       {/* Hidden temporary element for file decode */}
@@ -1682,28 +1741,62 @@ export const AttendanceView: React.FC = () => {
       {/* TAB 2: PRINTABLE ID BADGE CARDS */}
       {activeTab === 'QR_CARDS' && (
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value as GradeLevel)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-              >
-                {GRADE_LEVELS.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={selectedStream}
-                onChange={(e) => setSelectedStream(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-              >
-                <option value="East">East Stream</option>
-                <option value="West">West Stream</option>
-                <option value="North">North Stream</option>
-              </select>
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Class Level
+                </label>
+                <select
+                  value={badgeClassFilter}
+                  onChange={(e) => setBadgeClassFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                >
+                  <option value="ALL">All Classes ({allSchoolStudents.length})</option>
+                  {GRADE_LEVELS.map((g) => {
+                    const count = allSchoolStudents.filter((s) => s.currentClass === g).length;
+                    return (
+                      <option key={g} value={g}>
+                        {g} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Stream Filter
+                </label>
+                <select
+                  value={badgeStreamFilter}
+                  onChange={(e) => setBadgeStreamFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
+                >
+                  <option value="ALL">All Streams</option>
+                  <option value="East">East</option>
+                  <option value="West">West</option>
+                  <option value="North">North</option>
+                  <option value="Blue">Blue</option>
+                  <option value="Red">Red</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Search Learner
+                </label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Name or Adm No..."
+                    value={badgeSearch}
+                    onChange={(e) => setBadgeSearch(e.target.value)}
+                    className="pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-900 w-44"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -1714,7 +1807,7 @@ export const AttendanceView: React.FC = () => {
                 onClick={handleGenerateClassQrs}
                 loading={generatingQrs}
               >
-                Generate QR Badges
+                Generate Badges ({badgeStudents.length})
               </Button>
               <Button
                 variant="primary"
@@ -1723,91 +1816,142 @@ export const AttendanceView: React.FC = () => {
                 onClick={() =>
                   printerService.printTargetElement(
                     'printable-class-qr-cards',
-                    `Student_ID_Cards_${selectedClass}_${selectedStream}`
+                    `Student_ID_Cards_${badgeClassFilter}_${badgeStreamFilter}`
                   )
                 }
               >
-                Print ID Cards
+                Print Badges
               </Button>
             </div>
           </div>
 
           {/* Cards Grid */}
-          <div
-            id="printable-class-qr-cards"
-            className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 print:grid-cols-3"
-          >
-            {students.map((st) => {
-              const qrSrc = qrCodeUrls[st.id];
+          {badgeStudents.length === 0 ? (
+            <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400">
+              <QrCode className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+              <p className="font-bold text-slate-700">No learners found matching the selected badge filter.</p>
+              <p className="text-xs text-slate-400 mt-1">Try selecting "All Classes" or clear search keywords.</p>
+            </div>
+          ) : (
+            <div
+              id="printable-class-qr-cards"
+              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 print:grid-cols-3"
+            >
+              {badgeStudents.map((st) => {
+                const qrSrc = qrCodeUrls[st.id];
 
-              return (
-                <div
-                  key={st.id}
-                  className="bg-white p-5 rounded-2xl border-2 border-slate-200 shadow-xs flex flex-col items-center text-center space-y-3 print:border-black print:shadow-none"
-                >
-                  <div className="text-[10px] font-extrabold text-blue-900 uppercase tracking-wider">
-                    {school?.name || 'Gracia Learning Centre'}
-                  </div>
-
-                  <div className="w-14 h-14 rounded-full bg-blue-900 text-white flex items-center justify-center font-bold text-base shadow-xs">
-                    {st.fullName
-                      .split(' ')
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join('')}
-                  </div>
-
-                  <div>
-                    <h4 className="font-bold text-sm text-slate-900">{st.fullName}</h4>
-                    <p className="text-xs font-mono font-bold text-blue-900">{st.admissionNumber}</p>
-                    <p className="text-[11px] text-slate-500">
-                      {st.currentClass} • {st.stream} Stream
-                    </p>
-                  </div>
-
-                  {qrSrc ? (
-                    <div className="w-32 h-32 p-1 bg-white border border-slate-200 rounded-xl shadow-2xs">
-                      <img src={qrSrc} alt="QR Badge" className="w-full h-full object-contain" />
+                return (
+                  <div
+                    key={st.id}
+                    className="bg-white p-5 rounded-2xl border-2 border-slate-200 shadow-xs flex flex-col items-center text-center space-y-3 print:border-black print:shadow-none"
+                  >
+                    <div className="text-[10px] font-extrabold text-blue-900 uppercase tracking-wider">
+                      {school?.name || 'Gracia Learning Centre'}
                     </div>
-                  ) : (
-                    <div className="w-32 h-32 bg-slate-50 border border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 p-2">
-                      <QrCode className="w-8 h-8 mb-1" />
-                      <span className="text-[10px]">Click Generate</span>
+
+                    <div className="w-14 h-14 rounded-full bg-blue-900 text-white flex items-center justify-center font-bold text-base shadow-xs">
+                      {st.fullName
+                        .split(' ')
+                        .map((n) => n[0])
+                        .slice(0, 2)
+                        .join('')}
                     </div>
-                  )}
 
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenBadgePreview(st)}
-                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
-                    >
-                      View Badge
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSimulateTestScan(st.id)}
-                      className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
-                    >
-                      Test Scan
-                    </button>
-                  </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900">{st.fullName}</h4>
+                      <p className="text-xs font-mono font-bold text-blue-900">{st.admissionNumber}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {st.currentClass} {st.stream ? `• ${st.stream} Stream` : ''}
+                      </p>
+                    </div>
 
-                  <div className="text-[9px] text-slate-400 font-mono">
-                    Valid: Academic Year {school?.academicYear || '2026'}
+                    {qrSrc ? (
+                      <div className="w-32 h-32 p-1 bg-white border border-slate-200 rounded-xl shadow-2xs">
+                        <img src={qrSrc} alt="QR Badge" className="w-full h-full object-contain" />
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 bg-slate-50 border border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 p-2">
+                        <QrCode className="w-8 h-8 mb-1" />
+                        <span className="text-[10px]">Click Generate</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBadgePreview(st)}
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                      >
+                        View Badge
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSimulateTestScan(st.id)}
+                        className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-900 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                      >
+                        Test Scan
+                      </button>
+                    </div>
+
+                    <div className="text-[9px] text-slate-400 font-mono">
+                      Valid: Academic Year {school?.academicYear || '2026'}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {/* TAB 3: STANDARD CLASS REGISTER TABLE */}
       {activeTab === 'ROLL_CALL' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
+          {/* Quick Class Level Selector Ribbon */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                Select Class Level to Take Attendance:
+              </span>
+              <span className="text-xs font-bold text-blue-900">
+                Total School Enrolled: {allSchoolStudents.length} Learners
+              </span>
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              {GRADE_LEVELS.map((lvl) => {
+                const count = allSchoolStudents.filter((s) => s.currentClass === lvl).length;
+                const isSelected = selectedClass === lvl;
+                return (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => setSelectedClass(lvl)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-900 text-white shadow-xs'
+                        : 'bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <span>{lvl}</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                        isSelected
+                          ? 'bg-blue-800 text-blue-100'
+                          : count > 0
+                          ? 'bg-blue-100 text-blue-900'
+                          : 'bg-slate-200 text-slate-500'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Controls Bar */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-3">
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
@@ -1818,11 +1962,14 @@ export const AttendanceView: React.FC = () => {
                   onChange={(e) => setSelectedClass(e.target.value as GradeLevel)}
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-900"
                 >
-                  {GRADE_LEVELS.map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
-                  ))}
+                  {GRADE_LEVELS.map((g) => {
+                    const cnt = allSchoolStudents.filter((s) => s.currentClass === g).length;
+                    return (
+                      <option key={g} value={g}>
+                        {g} ({cnt} enrolled)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1835,11 +1982,17 @@ export const AttendanceView: React.FC = () => {
                   onChange={(e) => setSelectedStream(e.target.value)}
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-900"
                 >
-                  <option value="East">East Stream</option>
-                  <option value="West">West Stream</option>
-                  <option value="North">North Stream</option>
-                  <option value="Blue">Blue Stream</option>
-                  <option value="Red">Red Stream</option>
+                  <option value="ALL">All Streams ({classStudentsFromAll.length})</option>
+                  {dynamicStreams.map((strm) => {
+                    const strmCount = classStudentsFromAll.filter(
+                      (s) => (s.stream || '').toLowerCase() === strm.toLowerCase()
+                    ).length;
+                    return (
+                      <option key={strm} value={strm}>
+                        {strm} Stream {strmCount > 0 ? `(${strmCount})` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1854,6 +2007,22 @@ export const AttendanceView: React.FC = () => {
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-900"
                 />
               </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Search Learner
+                </label>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or admission no..."
+                    value={rollCallSearch}
+                    onChange={(e) => setRollCallSearch(e.target.value)}
+                    className="pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-900 w-52"
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Quick Bulk Actions */}
@@ -1861,14 +2030,14 @@ export const AttendanceView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAllStatus('PRESENT')}
-                className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-bold border border-emerald-200 transition-colors cursor-pointer"
+                className="px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold border border-emerald-200 transition-colors cursor-pointer"
               >
                 Mark All Present
               </button>
               <button
                 type="button"
                 onClick={() => setAllStatus('ABSENT')}
-                className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold border border-rose-200 transition-colors cursor-pointer"
+                className="px-3 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl text-xs font-bold border border-rose-200 transition-colors cursor-pointer"
               >
                 Mark All Absent
               </button>
@@ -1928,8 +2097,46 @@ export const AttendanceView: React.FC = () => {
                 Loading learners list for {selectedClass}...
               </div>
             ) : students.length === 0 ? (
-              <div className="p-12 text-center text-slate-400 text-xs">
-                No active students enrolled in {selectedClass} ({selectedStream} Stream).
+              <div className="p-10 text-center space-y-4">
+                <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mx-auto">
+                  <Users className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-base">
+                    No active students found in {selectedClass} {selectedStream !== 'ALL' ? `(${selectedStream} Stream)` : ''}
+                  </h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                    {selectedStream !== 'ALL'
+                      ? `There might be students enrolled in other streams of ${selectedClass}. Try switching to All Streams.`
+                      : `No learners are currently assigned to ${selectedClass} in the school roster.`}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  {selectedStream !== 'ALL' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStream('ALL')}
+                      className="px-4 py-2 bg-blue-900 text-white text-xs font-bold rounded-xl hover:bg-blue-800 transition-colors cursor-pointer"
+                    >
+                      Show All Streams in {selectedClass}
+                    </button>
+                  )}
+                  {GRADE_LEVELS.filter((g) => allSchoolStudents.some((s) => s.currentClass === g && g !== selectedClass)).map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setSelectedClass(g)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                    >
+                      Switch to {g} ({allSchoolStudents.filter((s) => s.currentClass === g).length} learners)
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : filteredRollCallStudents.length === 0 ? (
+              <div className="p-10 text-center text-slate-400 text-xs">
+                No learners match your search filter "{rollCallSearch}".
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1939,12 +2146,13 @@ export const AttendanceView: React.FC = () => {
                       <th className="py-3 px-4 w-12 text-center">#</th>
                       <th className="py-3 px-4">Learner Name</th>
                       <th className="py-3 px-4 font-mono">Admission No</th>
+                      <th className="py-3 px-4">Stream</th>
                       <th className="py-3 px-4 text-center">Roll Call Status</th>
                       <th className="py-3 px-4">Remarks / Excuse Reason</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {students.map((st, idx) => {
+                    {filteredRollCallStudents.map((st, idx) => {
                       const current = statusMap[st.id] || { status: 'PRESENT', remarks: '' };
 
                       return (
@@ -1960,6 +2168,11 @@ export const AttendanceView: React.FC = () => {
                           </td>
                           <td className="py-3 px-4 font-mono font-bold text-blue-900">
                             {st.admissionNumber}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-bold text-[10px]">
+                              {st.stream || 'Main'}
+                            </span>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-1">

@@ -21,11 +21,12 @@ export const studentService = {
       const snap = await getDocs(colRef);
       let list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as Student));
 
-      if (options?.classLevel) {
+      if (options?.classLevel && (options.classLevel as string) !== 'ALL') {
         list = list.filter((s) => s.currentClass === options.classLevel);
       }
-      if (options?.stream) {
-        list = list.filter((s) => s.stream.toLowerCase() === options.stream?.toLowerCase());
+      if (options?.stream && options.stream !== 'ALL' && options.stream.trim() !== '') {
+        const targetStream = options.stream.toLowerCase().trim();
+        list = list.filter((s) => (s.stream || '').toLowerCase().trim() === targetStream);
       }
       if (options?.search) {
         const q = options.search.toLowerCase();
