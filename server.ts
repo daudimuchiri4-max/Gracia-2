@@ -465,15 +465,25 @@ async function startServer() {
   } else {
     // Production mode: Serve compiled static files from dist/
     const distPath = path.join(process.cwd(), 'dist');
+    const distIndexPath = path.join(distPath, 'index.html');
+    const rootIndexPath = path.join(process.cwd(), 'index.html');
+
     app.use(express.static(distPath));
 
     // Client-Side SPA Fallback: Map all unmatched GET routes to index.html
-    // Handles /login, /admin, /teacher, /parent, /learner, /admissions, /fees, /students, etc.
+    // Handles /dashboard, /login, /admin, /teacher, /parent, /learner, /admissions, /fees, /students, etc.
     app.get('*', (req: Request, res: Response) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
         return res.status(404).json({ error: 'API route not found' });
       }
-      res.sendFile(path.join(distPath, 'index.html'));
+
+      if (fs.existsSync(distIndexPath)) {
+        return res.sendFile(distIndexPath);
+      } else if (fs.existsSync(rootIndexPath)) {
+        return res.sendFile(rootIndexPath);
+      }
+
+      res.status(404).send('Application build not found. Please run "npm run build" to generate dist/index.html.');
     });
   }
 
