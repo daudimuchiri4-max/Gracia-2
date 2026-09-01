@@ -208,49 +208,11 @@ export const feeService = {
     try {
       const snap = await getDocs(collection(db, 'schools', schoolId, 'feeStructures'));
       const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as FeeStructure));
-      if (list.length > 0) {
-        // Sync local cache
-        try {
-          localStorage.setItem(`fee_structures_${schoolId}`, JSON.stringify(list));
-          localStorage.setItem(`fee_structures_initialized_${schoolId}`, 'true');
-        } catch {}
-        return list;
-      }
-
-      // Check local cache
-      const cached = localStorage.getItem(`fee_structures_${schoolId}`);
-      const isInitialized = localStorage.getItem(`fee_structures_initialized_${schoolId}`);
-      
-      if (cached !== null) {
-        return JSON.parse(cached) as FeeStructure[];
-      }
-
-      if (isInitialized === 'true') {
-        // User deliberately deleted all fee structures, do not recreate defaults
-        return [];
-      }
-
-      // Seed default structures only on very first initial setup
-      const seeded = DEFAULT_CBC_FEE_STRUCTURES.map((dfs) => ({
-        ...dfs,
-        schoolId,
-        createdAt: new Date().toISOString(),
-      }));
-
-      // Cache locally
+      // Sync local cache
       try {
-        localStorage.setItem(`fee_structures_${schoolId}`, JSON.stringify(seeded));
-        localStorage.setItem(`fee_structures_initialized_${schoolId}`, 'true');
-      } catch (e) {
-        console.warn('Could not cache fee structures locally:', e);
-      }
-
-      // Asynchronously seed Firestore
-      Promise.all(
-        seeded.map((s) => setDoc(doc(db, 'schools', schoolId, 'feeStructures', s.id), cleanForFirestore(s)))
-      ).catch((err) => console.warn('Could not auto-seed fee structures to Firestore:', err));
-
-      return seeded;
+        localStorage.setItem(`fee_structures_${schoolId}`, JSON.stringify(list));
+      } catch {}
+      return list;
     } catch (err) {
       console.error('Error fetching fee structures:', err);
       const cached = localStorage.getItem(`fee_structures_${schoolId}`);
@@ -259,12 +221,23 @@ export const feeService = {
           return JSON.parse(cached) as FeeStructure[];
         } catch {}
       }
-      return DEFAULT_CBC_FEE_STRUCTURES.map((dfs) => ({
-        ...dfs,
-        schoolId,
-        createdAt: new Date().toISOString(),
-      }));
+      return [];
     }
+  },
+
+  async clearAllFeeStructures(schoolId: string): Promise<void> {
+    try {
+      const snap = await getDocs(collection(db, 'schools', schoolId, 'feeStructures'));
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    } catch (e) {
+      console.warn('Error clearing fee structures from Firestore:', e);
+    }
+    try {
+      localStorage.removeItem(`fee_structures_${schoolId}`);
+      localStorage.removeItem(`fee_structures_initialized_${schoolId}`);
+    } catch {}
   },
 
   async saveFeeStructure(

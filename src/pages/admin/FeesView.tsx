@@ -141,6 +141,8 @@ export const FeesView: React.FC = () => {
   const [editingStructureId, setEditingStructureId] = useState<string | null>(null);
   const [structureToDelete, setStructureToDelete] = useState<FeeStructure | null>(null);
   const [isDeleteStructureModalOpen, setIsDeleteStructureModalOpen] = useState(false);
+  const [isClearAllStructuresModalOpen, setIsClearAllStructuresModalOpen] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
   const [structureFormData, setStructureFormData] = useState({
     academicYear: '2026',
     term: 'Term 1' as 'Term 1' | 'Term 2' | 'Term 3',
@@ -417,6 +419,25 @@ export const FeesView: React.FC = () => {
     } catch (e: any) {
       showToast('Error deleting structure: ' + e.message, 'error');
       await loadFinanceData();
+    }
+  };
+
+  const handleConfirmClearAllFeeStructures = async () => {
+    if (!school?.id) return;
+    setIsClearingAll(true);
+    // Optimistic UI update
+    setFeeStructures([]);
+    setIsClearAllStructuresModalOpen(false);
+
+    try {
+      await feeService.clearAllFeeStructures(school.id);
+      showToast('All fee structures have been cleared.', 'info');
+      await loadFinanceData();
+    } catch (e: any) {
+      showToast('Error clearing fee structures: ' + e.message, 'error');
+      await loadFinanceData();
+    } finally {
+      setIsClearingAll(false);
     }
   };
 
@@ -737,6 +758,18 @@ export const FeesView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              {feeStructures.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-rose-600 border-rose-200 bg-white hover:bg-rose-50 font-medium"
+                  icon={<Trash2 className="w-3.5 h-3.5 text-rose-500" />}
+                  onClick={() => setIsClearAllStructuresModalOpen(true)}
+                  title="Clear all fee structures"
+                >
+                  Clear All ({feeStructures.length})
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -755,8 +788,45 @@ export const FeesView: React.FC = () => {
             </div>
           </div>
 
-          {/* Structures Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Structures Grid or Empty State */}
+          {feeStructures.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-4 shadow-xs">
+              <div className="w-14 h-14 bg-blue-50 text-blue-900 rounded-2xl flex items-center justify-center mx-auto">
+                <Layers className="w-7 h-7" />
+              </div>
+              <div className="max-w-md mx-auto space-y-1">
+                <h3 className="text-base font-bold text-slate-900">No Fee Structures Configured</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Create custom fee structures for your school's grades and terms using your exact tuition, lunch, CBC materials, and activity amounts.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<PlusCircle className="w-4 h-4" />}
+                onClick={() => {
+                  setEditingStructureId(null);
+                  setStructureFormData({
+                    academicYear: '2026',
+                    term: 'Term 1',
+                    classLevel: 'Grade 1',
+                    items: [
+                      { name: 'Tuition Fee', amount: 0, isOptional: false },
+                    ],
+                  });
+                  setIsStructureModalOpen(true);
+                }}
+              >
+                + Create First Fee Structure
+              </Button>
+            </div>
+          ) : filteredFeeStructures.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
+              <p className="text-sm font-semibold text-slate-700">No matching fee structures found</p>
+              <p className="text-xs text-slate-400">Try changing the Grade or Term filter above.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredFeeStructures.map((fs) => {
               const enrolledCount = students.filter((s) => s.currentClass === fs.classLevel).length;
 
@@ -846,7 +916,8 @@ export const FeesView: React.FC = () => {
                 </div>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1795,6 +1866,46 @@ export const FeesView: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Clear All Fee Structures Confirmation Modal */}
+      <Modal
+        isOpen={isClearAllStructuresModalOpen}
+        onClose={() => setIsClearAllStructuresModalOpen(false)}
+        title="Clear All Fee Structures"
+        maxWidth="sm"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-900">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-sm">Remove All {feeStructures.length} Fee Structures?</p>
+              <p className="text-slate-600 leading-relaxed">
+                This will delete all predefined/sample fee structures from your database. You will have a clean slate to define only your school's actual fees.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsClearAllStructuresModalOpen(false)}
+              disabled={isClearingAll}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              loading={isClearingAll}
+              icon={<Trash2 className="w-3.5 h-3.5" />}
+              onClick={handleConfirmClearAllFeeStructures}
+            >
+              Yes, Clear All Structures
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Edit Payment / Receipt Modal */}
       <Modal

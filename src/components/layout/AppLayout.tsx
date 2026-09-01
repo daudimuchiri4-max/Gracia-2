@@ -69,10 +69,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onOpenPublicSite,
   children,
 }) => {
-  const { school, activeRole, switchRole, user, logout, seedDemoData } = useAuth();
+  const { school, activeRole, switchRole, user, logout } = useAuth();
   const { showToast } = useToast();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [seeding, setSeeding] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
@@ -89,18 +88,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     };
     loadSub();
   }, [school?.id]);
-
-  const handleSeed = async () => {
-    setSeeding(true);
-    try {
-      await seedDemoData();
-      showToast('Sample Kenyan CBC school data successfully initialized in Firestore!', 'success');
-    } catch (e: any) {
-      showToast('Error seeding sample data: ' + e.message, 'error');
-    } finally {
-      setSeeding(false);
-    }
-  };
 
   const handleLogout = async () => {
     try {
@@ -230,18 +217,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             className="text-xs font-bold border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-950 px-2.5"
           >
             <span className="hidden xs:inline">Public</span> Website
-          </Button>
-
-          {/* Seed Sample Data Button */}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<Sparkles className="w-3.5 h-3.5 text-amber-600" />}
-            loading={seeding}
-            onClick={handleSeed}
-            className="text-xs font-semibold hidden sm:inline-flex"
-          >
-            Load Sample Data
           </Button>
 
           {/* Role Switcher */}

@@ -674,7 +674,7 @@ export const StudentsView: React.FC = () => {
           <div className="p-12 text-center space-y-3">
             <Users className="w-8 h-8 text-slate-300 mx-auto" />
             <div className="text-sm font-semibold text-slate-700">No students found</div>
-            <p className="text-xs text-slate-400">Try adjusting your filters or click 'Load Sample Data' in the navbar.</p>
+            <p className="text-xs text-slate-400">Try adjusting your search filters or add new learners using the 'Add Student' button.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
