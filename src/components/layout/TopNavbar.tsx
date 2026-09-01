@@ -13,8 +13,6 @@ import {
   User,
   ShieldCheck,
   ChevronDown,
-  RefreshCw,
-  Database,
   Menu,
   Printer,
 } from 'lucide-react';
@@ -31,10 +29,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onNavigatePublic,
   onNavigate,
 }) => {
-  const { user, school, activeRole, setActiveRole, seedDemoData, logout } = useAuth();
+  const { user, school, activeRole, setActiveRole, logout } = useAuth();
   const { showToast } = useToast();
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
-  const [seeding, setSeeding] = useState(false);
   const [printerModalOpen, setPrinterModalOpen] = useState(false);
 
   const printerConfig = printerService.getConfig();
@@ -47,20 +44,6 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     { role: 'ACCOUNTANT', label: 'Bursar / Accountant' },
     { role: 'CASHIER', label: 'POS Cashier' },
   ];
-
-  const handleSeed = async () => {
-    if (confirm('Load realistic Kenyan Primary School demo data (Gracia Learning Centre: students, CBC subjects, fees, POS products)? This will safely populate Firestore.')) {
-      setSeeding(true);
-      try {
-        await seedDemoData();
-        showToast('Gracia Learning Centre data loaded to Firestore successfully!', 'success');
-      } catch (e: any) {
-        showToast('Error seeding demo data: ' + e.message, 'error');
-      } finally {
-        setSeeding(false);
-      }
-    }
-  };
 
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-4 md:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
@@ -105,17 +88,6 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
       {/* Right actions */}
       <div className="flex items-center gap-2 md:gap-3">
-        {/* Seed demo data button */}
-        <button
-          onClick={handleSeed}
-          disabled={seeding}
-          className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/70 text-xs font-semibold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
-          title="Seed realistic school data to Firestore"
-        >
-          {seeding ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5 text-emerald-700" />}
-          <span>{seeding ? 'Seeding...' : 'Load Sample Data'}</span>
-        </button>
-
         {/* Physical Printer Hardware Connector Button */}
         <button
           onClick={() => setPrinterModalOpen(true)}
