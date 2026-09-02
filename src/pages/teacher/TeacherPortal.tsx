@@ -42,6 +42,39 @@ export const TeacherPortal: React.FC = () => {
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [loading, setLoading] = useState(true);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const [lastScanned, setLastScanned] = useState<{ id: string; time: number } | null>(null);
+
+  const playWelcomeSound = (studentName: string) => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.45);
+    } catch (e) {
+      // Audio context fallback
+    }
+
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel(); // Stop any ongoing speech
+        const firstName = studentName.trim().split(' ')[0];
+        const utterance = new SpeechSynthesisUtterance(`Welcome to Gracia Learning Centre, ${firstName}`);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.1;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (e) {
+      // Speech synthesis fallback
+    }
+  };
 
   // Direct Teacher Login Form State
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -571,8 +604,22 @@ export const TeacherPortal: React.FC = () => {
               s.fullName.toLowerCase().includes(trimmed)
           );
           if (found) {
+            const now = Date.now();
+            if (lastScanned && lastScanned.id === found.id && now - lastScanned.time < 5000) {
+              // Ignore rapid duplicate scan of same student
+              return;
+            }
+
+            if (attendanceMap[found.id] === 'PRESENT') {
+              showToast(`ℹ️ ${found.fullName} (${found.admissionNumber}) is already checked in!`, 'info');
+              setLastScanned({ id: found.id, time: now });
+              return;
+            }
+
             setAttendanceMap((p) => ({ ...p, [found.id]: 'PRESENT' }));
-            showToast(`✓ QR Scanned: ${found.fullName} (${found.admissionNumber}) marked PRESENT!`, 'success');
+            setLastScanned({ id: found.id, time: now });
+            playWelcomeSound(found.fullName);
+            showToast(`🎉 Welcome! ${found.fullName} (${found.admissionNumber}) checked in successfully!`, 'success');
           } else {
             showToast(`QR Scanned "${code}": Student not found in current roster.`, 'warning');
           }
