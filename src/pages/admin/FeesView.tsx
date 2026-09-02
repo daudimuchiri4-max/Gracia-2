@@ -66,7 +66,7 @@ const GRADE_LEVELS: GradeLevel[] = [
 export const FeesView: React.FC = () => {
   const { school, user } = useAuth();
   const { showToast } = useToast();
-  const [activeTab, setActiveTab] = useState<'STRUCTURES' | 'BALANCES' | 'PAYMENTS' | 'INVOICES'>('STRUCTURES');
+  const [activeTab, setActiveTab] = useState<'STRUCTURES' | 'PAYMENTS' | 'INVOICES'>('STRUCTURES');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [feeStructures, setFeeStructures] = useState<FeeStructure[]>([]);
@@ -694,16 +694,6 @@ export const FeesView: React.FC = () => {
           <Layers className="w-3.5 h-3.5" /> Class Fee Structures ({feeStructures.length})
         </button>
         <button
-          onClick={() => setActiveTab('BALANCES')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-            activeTab === 'BALANCES'
-              ? 'bg-blue-900 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Users className="w-3.5 h-3.5" /> Learner Fee Ledgers ({students.length})
-        </button>
-        <button
           onClick={() => setActiveTab('PAYMENTS')}
           className={`px-4 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
             activeTab === 'PAYMENTS'
@@ -922,7 +912,7 @@ export const FeesView: React.FC = () => {
       )}
 
       {/* TAB: LEARNER BALANCES & SEARCH */}
-      {activeTab === 'BALANCES' && (
+      {false && (
         <div className="space-y-4">
           {/* Search & Filter Header */}
           <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
