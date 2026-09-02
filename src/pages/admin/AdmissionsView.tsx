@@ -107,7 +107,7 @@ export const AdmissionsView: React.FC = () => {
           dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           scope: 'SELECTED',
           studentIds: [newStudent.id],
-          skipAlreadyBilled: false,
+          skipAlreadyBilled: true,
         });
       } catch (billingErr) {
         console.error('Auto-billing admission student error:', billingErr);

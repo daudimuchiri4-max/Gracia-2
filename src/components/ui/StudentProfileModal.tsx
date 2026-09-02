@@ -33,6 +33,7 @@ import { Student, School, Invoice, Payment, ReportCard, CBCRating } from '../../
 import { feeService } from '../../services/feeAndPaymentService';
 import { assessmentService } from '../../services/assessmentAndAttendanceService';
 import { generateStudentQrCode } from '../../utils/qrCodeGenerator';
+import { studentService } from '../../services/studentService';
 import { printerService } from '../../services/printerService';
 
 interface StudentProfileModalProps {
@@ -772,12 +773,34 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                   </a>
                 )}
                 <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-slate-50 border-slate-300 text-slate-800 hover:bg-slate-100"
+                  icon={<Printer className="w-4 h-4" />}
+                  onClick={async () => {
+                    if (school) {
+                      try {
+                        const allStudents = await studentService.getStudents(school.id);
+                        await printerService.printAllStudentIDCards(allStudents, school);
+                      } catch (err: any) {
+                        alert('Error printing all ID cards: ' + err.message);
+                      }
+                    }
+                  }}
+                >
+                  Print All (A4 Grid)
+                </Button>
+                <Button
                   variant="primary"
                   size="sm"
                   icon={<Printer className="w-4 h-4" />}
-                  onClick={() => {
+                  onClick={async () => {
                     if (student) {
-                      printerService.printStudentIDCard(student, school);
+                      try {
+                        await printerService.printStudentIDCard(student, school);
+                      } catch (err: any) {
+                        alert('Error printing ID card: ' + err.message);
+                      }
                     }
                   }}
                 >
@@ -790,8 +813,12 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
             <div className="max-w-md mx-auto bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 text-white rounded-2xl p-5 border-2 border-blue-700 shadow-xl space-y-4">
               <div className="flex items-center justify-between border-b border-blue-800 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-white/10 p-1 flex items-center justify-center">
-                    <SchoolIcon className="w-5 h-5 text-amber-400" />
+                  <div className="w-8 h-8 rounded-lg bg-white p-1 flex items-center justify-center overflow-hidden">
+                    <img
+                      src={(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}
+                      alt="Logo"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <div>
                     <h5 className="font-bold text-xs uppercase tracking-tight">{school?.name || 'Gracia Learning Centre'}</h5>

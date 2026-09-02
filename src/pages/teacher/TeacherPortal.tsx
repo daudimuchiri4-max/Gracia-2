@@ -4,13 +4,34 @@ import { useToast } from '../../contexts/ToastContext';
 import { studentService } from '../../services/studentService';
 import { assessmentService, attendanceService } from '../../services/assessmentAndAttendanceService';
 import { academicService } from '../../services/academicService';
-import { Student, Subject, GradeLevel, CBCRating } from '../../types';
+import { Student, Subject, GradeLevel, CBCRating, UserRole } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { CalendarCheck, Award, Users, Save, CheckCircle, Clock } from 'lucide-react';
+import { StaffLoginModal } from '../../components/ui/StaffLoginModal';
+import {
+  CalendarCheck,
+  Award,
+  Users,
+  Save,
+  CheckCircle,
+  Clock,
+  LogIn,
+  Lock,
+  User as UserIcon,
+  KeyRound,
+  ShieldCheck,
+  LogOut,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  QrCode,
+  Scan,
+  Camera,
+  CheckCircle2,
+} from 'lucide-react';
 
 export const TeacherPortal: React.FC = () => {
-  const { school, user } = useAuth();
+  const { school, user, login, logout } = useAuth();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'ATTENDANCE' | 'MARKS'>('ATTENDANCE');
   const [selectedClass, setSelectedClass] = useState<GradeLevel>('Grade 6');
@@ -19,6 +40,15 @@ export const TeacherPortal: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+
+  // Direct Teacher Login Form State
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isStaffLoginModalOpen, setIsStaffLoginModalOpen] = useState(false);
 
   // Attendance state
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
@@ -29,10 +59,19 @@ export const TeacherPortal: React.FC = () => {
   const [markMap, setMarkMap] = useState<Record<string, { score: number; comment: string }>>({});
   const [savingMarks, setSavingMarks] = useState(false);
 
+  const isTeacherAuthenticated =
+    user &&
+    (user.role === 'TEACHER' ||
+      user.role === 'SCHOOL_ADMIN' ||
+      user.role === 'HEADTEACHER' ||
+      user.role === 'DEPUTY_HEADTEACHER' ||
+      user.role === 'ACCOUNTANT' ||
+      user.role === 'RECEPTIONIST');
+
   useEffect(() => {
-    if (!school?.id) return;
+    if (!school?.id || !isTeacherAuthenticated) return;
     loadTeacherData();
-  }, [school?.id, selectedClass, selectedStream]);
+  }, [school?.id, selectedClass, selectedStream, isTeacherAuthenticated]);
 
   const loadTeacherData = async () => {
     setLoading(true);
@@ -59,6 +98,45 @@ export const TeacherPortal: React.FC = () => {
       showToast('Error loading teacher portal: ' + e.message, 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTeacherLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginIdentifier.trim() || !loginPassword.trim()) {
+      setLoginError('Please enter your staff username/email and password.');
+      return;
+    }
+    setLoggingIn(true);
+    setLoginError(null);
+    try {
+      const profile = await login(loginIdentifier.trim(), loginPassword.trim());
+      
+      // Enforce roles & permissions: Only teachers and authorized school staff are permitted
+      const staffRoles: UserRole[] = [
+        'TEACHER',
+        'SCHOOL_ADMIN',
+        'HEADTEACHER',
+        'DEPUTY_HEADTEACHER',
+        'ACCOUNTANT',
+        'RECEPTIONIST',
+        'NURSE',
+        'LIBRARIAN',
+        'SUPER_ADMIN',
+      ];
+
+      if (!profile || !staffRoles.includes(profile.role)) {
+        await logout();
+        throw new Error('Access denied: This portal is restricted to teachers and authorized school staff. Parents and students must use their respective portals.');
+      }
+
+      showToast('Successfully logged into Teacher Portal!', 'success');
+    } catch (err: any) {
+      const msg = err.message || 'Invalid username or password given by admin.';
+      setLoginError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -112,19 +190,126 @@ export const TeacherPortal: React.FC = () => {
     }
   };
 
+  // If not authenticated as teacher/staff, display login gate
+  if (!isTeacherAuthenticated) {
+    return (
+      <div className="max-w-xl mx-auto py-8 px-4">
+        <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-lg space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 bg-blue-900/10 text-blue-900 rounded-2xl flex items-center justify-center mx-auto">
+              <KeyRound className="w-7 h-7" />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Teacher Portal Login</h2>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Enter the staff login credentials (username/email and password) provided by your school administrator.
+            </p>
+          </div>
+
+          {loginError && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <p className="text-xs font-medium leading-relaxed">{loginError}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleTeacherLoginSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Staff Username or Official Email:
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={loginIdentifier}
+                  onChange={(e) => setLoginIdentifier(e.target.value)}
+                  placeholder="e.g. catherine.mutua or cmutua@glcm.ac.ke"
+                  required
+                  className="w-full px-3.5 py-3 pl-10 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-blue-900 focus:border-transparent font-medium bg-slate-50/50 focus:bg-white"
+                />
+                <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">Staff Password:</label>
+                <span className="text-[10px] text-slate-400 font-medium">Default: Password@2026</span>
+              </div>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="Enter your assigned password"
+                  required
+                  className="w-full px-3.5 py-3 pl-10 pr-10 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-blue-900 focus:border-transparent font-medium bg-slate-50/50 focus:bg-white"
+                />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              loading={loggingIn}
+              icon={<LogIn className="w-4 h-4" />}
+              className="w-full font-bold text-xs py-3 shadow-md"
+            >
+              Sign In to Teacher Portal
+            </Button>
+          </form>
+
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span className="flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              Secure Institutional Authentication
+            </span>
+            <span>Need logins? Contact Admin</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Banner */}
-      <div className="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-3xl p-6 sm:p-8 text-white shadow-md">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-blue-200 mb-3 border border-white/15">
-          <span>Teacher & CBC Facilitator Workspace</span>
+      <div className="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-3xl p-6 sm:p-8 text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-blue-200 mb-3 border border-white/15">
+            <span>Teacher & CBC Facilitator Workspace</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+            Welcome, {user?.fullName || 'Teacher'}
+          </h1>
+          <p className="mt-2 text-xs sm:text-sm text-blue-100/90 max-w-xl">
+            Quick roll call register, continuous assessment recording, and CBC formative grading matrix.
+          </p>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-          Welcome, {user?.fullName || 'Teacher'}
-        </h1>
-        <p className="mt-2 text-xs sm:text-sm text-blue-100/90 max-w-xl">
-          Quick roll call register, continuous assessment recording, and CBC formative grading matrix.
-        </p>
+        <div className="shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-white border-white/30 bg-white/10 hover:bg-white/20 font-bold"
+            icon={<LogOut className="w-4 h-4 text-white" />}
+            onClick={async () => {
+              await logout();
+              showToast('Logged out of Teacher Portal successfully.', 'info');
+            }}
+          >
+            Sign Out / Switch Teacher
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -211,7 +396,18 @@ export const TeacherPortal: React.FC = () => {
           )}
         </div>
 
-        <div>
+        <div className="flex items-center gap-2">
+          {activeTab === 'ATTENDANCE' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-blue-900 border-blue-200 bg-blue-50/70 hover:bg-blue-100 font-bold"
+              icon={<QrCode className="w-4 h-4 text-blue-900" />}
+              onClick={() => setIsQrScannerOpen(true)}
+            >
+              Scan Student ID / QR
+            </Button>
+          )}
           {activeTab === 'ATTENDANCE' ? (
             <Button
               variant="primary"
@@ -359,6 +555,93 @@ export const TeacherPortal: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* QR Scanner Modal */}
+      {isQrScannerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">Student ID QR Scanner</h3>
+                  <p className="text-xs text-slate-500">Scan student ID card QR code for instant roll call</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsQrScannerOpen(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-sm px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center shrink-0">
+                  <Scan className="w-4 h-4" />
+                </div>
+                <p className="text-xs text-blue-900 font-medium">
+                  Point device camera at student ID card QR code or click a student below to simulate scanning.
+                </p>
+              </div>
+
+              {/* Viewfinder simulation */}
+              <div className="w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-36 flex items-center justify-center text-white text-xs relative">
+                <div className="absolute inset-0 border-2 border-dashed border-blue-400/50 m-4 rounded-xl flex items-center justify-center pointer-events-none">
+                  <span className="bg-black/60 px-3 py-1 rounded-full text-[10px] text-blue-300 font-mono">
+                    Align QR Code Here
+                  </span>
+                </div>
+                <div className="text-center p-6 space-y-1">
+                  <Camera className="w-6 h-6 mx-auto text-blue-400 animate-pulse" />
+                  <p className="text-slate-300 font-medium text-[11px]">Camera scanner active</p>
+                </div>
+              </div>
+
+              {/* Quick Simulator / Student Tap to Scan */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
+                  Roster Students (Click to Simulate QR Scan):
+                </label>
+                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                  {students.map((std) => (
+                    <div
+                      key={std.id}
+                      onClick={() => {
+                        setAttendanceMap((p) => ({ ...p, [std.id]: 'PRESENT' }));
+                        showToast(`✓ QR Scanned: ${std.fullName} (${std.admissionNumber}) marked PRESENT!`, 'success');
+                      }}
+                      className="p-2.5 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl flex items-center justify-between cursor-pointer transition-all"
+                    >
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">{std.fullName}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">{std.admissionNumber}</p>
+                      </div>
+                      <span className="px-2.5 py-1 bg-blue-900 text-white text-[10px] font-bold rounded-lg shadow-2xs flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Scan ID QR
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsQrScannerOpen(false)}
+              >
+                Done Scanning
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

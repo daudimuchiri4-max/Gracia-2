@@ -8,6 +8,7 @@
  */
 
 import { School, Payment, Student, ReportCard, FeeStructure, UserProfile } from '../types';
+import QRCode from 'qrcode';
 
 export type PaperWidth = '80mm' | '58mm' | 'A4';
 
@@ -535,9 +536,186 @@ class PrinterService {
   /**
    * Print Student ID Card / Lanyard Badge (Front & Back standard CR80)
    */
-  public printStudentIDCard(student: Student, school: School | null): void {
-    const html = this.generateStudentIDCardHtml(student, school);
+  public async printStudentIDCard(student: Student, school: School | null): Promise<void> {
+    const html = await this.generateStudentIDCardHtml(student, school);
     this.printViaIframe(html, 'ID_CARD', `ID_Card_${student.admissionNumber.replace(/\//g, '_')}`);
+  }
+
+  /**
+   * Print All Student ID Cards in a grid on A4 sheets (CR80 cards, scannable QR codes)
+   */
+  public async printAllStudentIDCards(students: Student[], school: School | null): Promise<void> {
+    const schoolLogo = (school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg';
+    
+    let cardsHtml = '';
+    for (const student of students) {
+      let qrCodeDataUrl = '';
+      try {
+        const qrPayload = JSON.stringify({
+          type: 'STUDENT_ATTENDANCE',
+          schoolId: school?.id || 'default',
+          studentId: student.id,
+          admissionNumber: student.admissionNumber,
+          fullName: student.fullName,
+          classLevel: `${student.currentClass} ${student.stream || ''}`.trim(),
+        });
+        qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+          errorCorrectionLevel: 'M',
+          margin: 1,
+          width: 150,
+          color: { dark: '#0f172a', light: '#ffffff' }
+        });
+      } catch (e) {
+        console.error('Error generating ID card QR:', e);
+      }
+
+      const photoHtml = student.photoUrl
+        ? `<img src="${student.photoUrl}" style="width: 100%; height: 100%; object-fit: cover;" />`
+        : `<span style="font-size: 7px; color: #94a3b8;">NO PHOTO</span>`;
+
+      cardsHtml += `
+        <div class="id-card">
+          <div class="card-header">
+            <div style="display: flex; align-items: center;">
+              <img src="${schoolLogo}" class="school-logo" alt="Logo" />
+              <div class="school-info">
+                <div class="school-name">${school?.name || 'Gracia Learning Centre'}</div>
+                <div class="school-sub">Official Learner Identity Card</div>
+              </div>
+            </div>
+            <div class="badge-type">STUDENT</div>
+          </div>
+
+          <div class="card-body">
+            <div class="photo-box">
+              ${photoHtml}
+            </div>
+            <div class="info-list">
+              <div class="name">${student.fullName}</div>
+              <div><strong>Adm No:</strong> <span style="font-family: monospace; color: #60a5fa; font-weight: bold;">${student.admissionNumber}</span></div>
+              <div><strong>Grade:</strong> ${student.currentClass} ${student.stream ? `• ${student.stream}` : ''}</div>
+              <div><strong>Gender:</strong> ${student.gender || 'N/A'} | <strong>Blood:</strong> ${student.bloodGroup || 'O+'}</div>
+              <div><strong>Emergency:</strong> ${student.parentPhone || student.emergencyPhone || school?.phone || '+254 722 000 000'}</div>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <div>
+              <div style="font-weight: bold; color: #fff;">Valid: 2026 Academic Yr</div>
+              <div style="font-size: 6.5px; color: #93c5fd;">Ministry of Education CBC</div>
+            </div>
+            <div class="qr-box">
+              ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:6px; color:#000;">QR</span>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Student ID Cards - Batch (${students.length})</title>
+        <style>
+          @page { size: A4 portrait; margin: 10mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; padding: 5mm; }
+          .grid-container {
+            display: grid;
+            grid-template-columns: repeat(2, 85.6mm);
+            gap: 8mm;
+            justify-content: center;
+            align-content: start;
+          }
+          .id-card {
+            width: 85.6mm;
+            height: 53.98mm;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+            color: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border: 1.5px solid #3b82f6;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .card-header {
+            padding: 6px 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+          }
+          .school-logo { width: 24px; height: 24px; object-fit: contain; background: #fff; border-radius: 3px; padding: 1px; }
+          .school-info { display: flex; flex-direction: column; margin-left: 6px; }
+          .school-name { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; }
+          .school-sub { font-size: 6px; color: #93c5fd; }
+          .badge-type { background: #2563eb; color: #fff; font-size: 6.5px; font-weight: bold; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; }
+          
+          .card-body {
+            padding: 6px 10px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+          }
+          .photo-box {
+            width: 54px;
+            height: 66px;
+            background: #1e293b;
+            border: 1.5px solid #60a5fa;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 7px;
+            color: #94a3b8;
+            text-align: center;
+            overflow: hidden;
+            flex-shrink: 0;
+          }
+          .info-list { font-size: 8px; line-height: 1.3; color: #f8fafc; flex-grow: 1; }
+          .info-list .name { font-size: 11px; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-transform: uppercase; }
+          
+          .card-footer {
+            background: rgba(0,0,0,0.2);
+            padding: 4px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 7px;
+            color: #cbd5e1;
+            border-top: 1px solid rgba(255,255,255,0.1);
+          }
+          .qr-box {
+            width: 32px;
+            height: 32px;
+            background: #fff;
+            padding: 2px;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .qr-box img { width: 100%; height: 100%; object-fit: contain; }
+        </style>
+      </head>
+      <body>
+        <div style="text-align: center; margin-bottom: 12px; font-size: 11px; font-weight: bold; color: #0f172a;">
+          ${school?.name || 'Gracia Learning Centre'} — Batch Student ID Cards (${students.length} Cards)
+        </div>
+        <div class="grid-container">
+          ${cardsHtml}
+        </div>
+      </body>
+      </html>
+    `;
+
+    this.printViaIframe(html, 'A4', `Student_ID_Cards_Grid_${school?.code || 'School'}`);
   }
 
   /**
@@ -1108,7 +1286,28 @@ class PrinterService {
   /**
    * HTML Template: Student ID Card (Standard CR80 85.6mm x 53.98mm)
    */
-  private generateStudentIDCardHtml(student: Student, school: School | null): string {
+  private async generateStudentIDCardHtml(student: Student, school: School | null): Promise<string> {
+    const schoolLogo = (school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg';
+    let qrCodeDataUrl = '';
+    try {
+      const qrPayload = JSON.stringify({
+        type: 'STUDENT_ATTENDANCE',
+        schoolId: school?.id || 'default',
+        studentId: student.id,
+        admissionNumber: student.admissionNumber,
+        fullName: student.fullName,
+        classLevel: `${student.currentClass} ${student.stream || ''}`.trim(),
+      });
+      qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 150,
+        color: { dark: '#0f172a', light: '#ffffff' }
+      });
+    } catch (e) {
+      console.error('Error generating ID card QR:', e);
+    }
+
     return `
       <!DOCTYPE html>
       <html>
@@ -1116,126 +1315,174 @@ class PrinterService {
         <meta charset="utf-8">
         <title>Student ID - ${student.admissionNumber}</title>
         <style>
-          @page { size: auto; margin: 10mm; }
+          @page { size: auto; margin: 5mm; }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f1f5f9; padding: 20px; display: flex; gap: 20px; justify-content: center; }
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; padding: 10px; display: flex; flex-direction: column; gap: 15px; align-items: center; }
+          .card-container { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; page-break-inside: avoid; }
           .id-card {
             width: 85.6mm;
             height: 53.98mm;
-            background: #fff;
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+            color: #fff;
+            border-radius: 10px;
             overflow: hidden;
             position: relative;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            border: 1.5px solid #3b82f6;
+          }
+          .card-back {
+            background: #ffffff;
+            color: #0f172a;
+            border: 1.5px solid #cbd5e1;
           }
           .card-header {
-            background: #0f172a;
-            color: #fff;
-            padding: 6px 10px;
+            padding: 8px 12px;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
           }
-          .school-title { font-size: 9px; font-weight: 900; text-transform: uppercase; }
+          .card-back .card-header {
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            color: #0f172a;
+          }
+          .school-logo { width: 28px; height: 28px; object-fit: contain; background: #fff; border-radius: 4px; padding: 2px; }
+          .school-info { display: flex; flex-direction: column; margin-left: 8px; }
+          .school-name { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; }
+          .school-sub { font-size: 6.5px; color: #93c5fd; }
+          .card-back .school-sub { color: #64748b; }
+          .badge-type { background: #2563eb; color: #fff; font-size: 7px; font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+          
           .card-body {
-            padding: 6px 10px;
+            padding: 8px 12px;
             display: flex;
             gap: 10px;
             align-items: center;
           }
           .photo-box {
-            width: 58px;
-            height: 68px;
-            background: #e2e8f0;
-            border: 1px solid #94a3b8;
+            width: 62px;
+            height: 74px;
+            background: #1e293b;
+            border: 2px solid #60a5fa;
             border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 8px;
-            color: #64748b;
+            color: #94a3b8;
             text-align: center;
             overflow: hidden;
             flex-shrink: 0;
           }
-          .info-list { font-size: 8.5px; line-height: 1.3; color: #1e293b; }
-          .info-list .name { font-size: 11px; font-weight: 900; color: #0f172a; margin-bottom: 2px; }
+          .info-list { font-size: 8.5px; line-height: 1.35; color: #f8fafc; flex-grow: 1; }
+          .card-back .info-list { color: #334155; }
+          .info-list .name { font-size: 11.5px; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-transform: uppercase; }
+          .card-back .info-list .name { color: #0f172a; }
+          
           .card-footer {
-            background: #f8fafc;
-            border-top: 1px solid #e2e8f0;
-            padding: 4px 10px;
+            background: rgba(0,0,0,0.2);
+            padding: 5px 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             font-size: 7.5px;
+            color: #cbd5e1;
+            border-top: 1px solid rgba(255,255,255,0.1);
+          }
+          .card-back .card-footer {
+            background: #f8fafc;
             color: #64748b;
+            border-top: 1px solid #e2e8f0;
           }
-          .barcode {
-            font-family: monospace;
-            font-size: 11px;
-            letter-spacing: 2px;
-            font-weight: bold;
-            color: #0f172a;
+          .qr-box {
+            width: 38px;
+            height: 38px;
+            background: #fff;
+            padding: 2px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
           }
+          .qr-box img { width: 100%; height: 100%; object-fit: contain; }
         </style>
       </head>
       <body>
-        <!-- Front Side -->
-        <div class="id-card">
-          <div class="card-header">
-            <div>
-              <div class="school-title">${school?.name || 'Gracia Learning Centre'}</div>
-              <div style="font-size: 7px; color: #94a3b8;">Official Learner Identification</div>
+        <div class="card-container">
+          <!-- FRONT SIDE -->
+          <div class="id-card">
+            <div class="card-header">
+              <div style="display: flex; align-items: center;">
+                <img src="${schoolLogo}" class="school-logo" alt="Logo" />
+                <div class="school-info">
+                  <div class="school-name">${school?.name || 'Gracia Learning Centre'}</div>
+                  <div class="school-sub">Official Learner Identity Card</div>
+                </div>
+              </div>
+              <div class="badge-type">STUDENT</div>
             </div>
-            <div style="background: #2563eb; color: #fff; font-size: 7.5px; font-weight: bold; padding: 2px 5px; border-radius: 3px;">
-              STUDENT
+
+            <div class="card-body">
+              <div class="photo-box">
+                ${
+                  student.photoUrl
+                    ? `<img src="${student.photoUrl}" style="width: 100%; height: 100%; object-fit: cover;" />`
+                    : `<span style="font-size: 7px; color: #94a3b8;">NO PHOTO</span>`
+                }
+              </div>
+              <div class="info-list">
+                <div class="name">${student.fullName}</div>
+                <div><strong>Adm No:</strong> <span style="font-family: monospace; color: #60a5fa; font-weight: bold;">${student.admissionNumber}</span></div>
+                <div><strong>Grade:</strong> ${student.currentClass} ${student.stream ? `• ${student.stream}` : ''}</div>
+                <div><strong>Gender:</strong> ${student.gender || 'N/A'} | <strong>Blood:</strong> ${student.bloodGroup || 'O+'}</div>
+                <div><strong>Emergency:</strong> ${student.parentPhone || student.emergencyPhone || school?.phone || '+254 722 000 000'}</div>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <div>
+                <div style="font-weight: bold; color: #fff;">Valid: 2026 Academic Yr</div>
+                <div style="font-size: 6.5px; color: #93c5fd;">Ministry of Education CBC</div>
+              </div>
+              <div class="qr-box">
+                ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:6px; color:#000;">QR</span>`}
+              </div>
             </div>
           </div>
 
-          <div class="card-body">
-            <div class="photo-box">
-              ${
-                student.photoUrl
-                  ? `<img src="${student.photoUrl}" style="width: 100%; height: 100%; object-fit: cover;" />`
-                  : `PASSPORT PHOTO`
-              }
+          <!-- BACK SIDE -->
+          <div class="id-card card-back">
+            <div class="card-header">
+              <div style="display: flex; align-items: center;">
+                <img src="${schoolLogo}" class="school-logo" style="border: 1px solid #e2e8f0;" alt="Logo" />
+                <div class="school-info">
+                  <div class="school-name" style="color: #0f172a;">Terms & Conditions</div>
+                  <div class="school-sub">Emergency & Administration</div>
+                </div>
+              </div>
+              <div style="font-size: 7px; font-weight: bold; color: #2563eb;">CR80 SECURE</div>
             </div>
-            <div class="info-list">
-              <div class="name">${student.fullName}</div>
-              <div><strong>Adm No:</strong> ${student.admissionNumber}</div>
-              <div><strong>Grade:</strong> ${student.currentClass} - ${student.stream}</div>
-              <div><strong>Gender:</strong> ${student.gender}</div>
-              <div><strong>Emergency:</strong> ${student.parentPhone || student.emergencyPhone || 'N/A'}</div>
+
+            <div style="padding: 8px 12px; font-size: 7.5px; color: #334155; line-height: 1.4;">
+              <p>1. This card is the property of <strong>${school?.name || 'Gracia Learning Centre'}</strong>. If found, please return to the administration.</p>
+              <p style="margin-top: 3px;">2. This ID card grants access to school premises, library, transport, and digital attendance gates.</p>
+              <p style="margin-top: 3px;">3. <strong>School Helpline:</strong> ${school?.phone || '+254 722 000 000'}</p>
+              <p>4. <strong>Email:</strong> ${school?.email || 'admin@school.ac.ke'}</p>
             </div>
-          </div>
 
-          <div class="card-footer">
-            <span class="barcode">||| | |||| | |||</span>
-            <span>Valid: 2026 Academic Year</span>
-          </div>
-        </div>
-
-        <!-- Back Side -->
-        <div class="id-card">
-          <div class="card-header" style="background: #1e293b;">
-            <div class="school-title">Terms of Identification</div>
-            <div style="font-size: 7px; color: #94a3b8;">Emergency Contacts</div>
-          </div>
-
-          <div style="padding: 8px 10px; font-size: 7.5px; color: #475569; line-height: 1.4;">
-            <p>1. This card remains the property of <strong>${school?.name || 'the school'}</strong> and must be produced upon request.</p>
-            <p style="margin-top: 3px;">2. If found, please return to the school administration office or nearest police station.</p>
-            <p style="margin-top: 3px;">3. <strong>School Helpline:</strong> ${school?.phone || '+254 722 000 000'}</p>
-            <p>4. <strong>Email:</strong> ${school?.email || 'admin@school.ac.ke'}</p>
-          </div>
-
-          <div class="card-footer">
-            <span>Principal's Signature: <em>Verified</em></span>
-            <span style="font-weight: bold; color: #0f172a;">KENYA CBC</span>
+            <div class="card-footer">
+              <div>
+                <span style="font-weight: bold; color: #0f172a;">Authorized Signature</span>
+                <div style="font-size: 6.5px; color: #64748b;">Principal / Headteacher</div>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-weight: bold; color: #1e3a8a; font-family: monospace;">CBC-ID-2026</span>
+              </div>
+            </div>
           </div>
         </div>
       </body>
@@ -2068,7 +2315,15 @@ class PrinterService {
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch (e) {
-        console.warn('Iframe print failed, falling back:', e);
+        console.warn('Iframe print failed, falling back to window.open:', e);
+        const win = window.open('', '_blank');
+        if (win) {
+          win.document.open();
+          win.document.write(htmlContent);
+          win.document.close();
+          win.focus();
+          setTimeout(() => win.print(), 500);
+        }
       } finally {
         setTimeout(() => iframe.remove(), 2500);
       }

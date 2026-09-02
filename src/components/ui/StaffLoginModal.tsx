@@ -153,38 +153,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
             </div>
           </div>
 
-          {/* Quick Staff Demo Credential Selector */}
-          <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
-                <KeyRound className="w-3 h-3 text-blue-900" />
-                Quick Staff Logins (Click to autofill):
-              </span>
-              <span className="text-[10px] text-blue-900 font-semibold">1-Click Test</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              {[
-                { label: 'Admin (Daudi)', user: 'daudi.muchiri', role: 'Super Admin' },
-                { label: 'Principal', user: 'principal.wanjiru', role: 'Headteacher' },
-                { label: 'Deputy Head', user: 'deputy.omondi', role: 'Deputy' },
-                { label: 'Senior Teacher', user: 'catherine.mutua', role: 'Teacher' },
-                { label: 'Bursar / Accounts', user: 'accounts.patrick', role: 'Accountant' },
-                { label: 'Front Office', user: 'reception.faith', role: 'Reception' },
-              ].map((item) => (
-                <button
-                  key={item.user}
-                  type="button"
-                  onClick={() => handleFillDemo(item.user, 'Password@2026')}
-                  className="px-2 py-1.5 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-slate-800 text-[11px] font-medium rounded-lg transition-all text-left flex flex-col cursor-pointer shadow-2xs group"
-                >
-                  <span className="font-bold text-slate-900 truncate group-hover:text-blue-900">
-                    {item.label}
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-mono">@{item.user}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+
 
           <Button
             type="submit"

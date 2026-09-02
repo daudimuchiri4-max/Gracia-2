@@ -249,6 +249,22 @@ const MainAppContent: React.FC = () => {
 
   const handleNavigate = (view: string) => {
     const normalized = normalizeView(view);
+    if (activeRole === 'TEACHER' && normalized !== 'PUBLIC' && normalized !== 'TEACHER_PORTAL') {
+      showToast('Access restricted: Teachers can only access the Teacher Portal.', 'error');
+      setActiveView('TEACHER_PORTAL');
+      return;
+    }
+    if (activeRole === 'PARENT' && normalized !== 'PUBLIC' && normalized !== 'PARENT_PORTAL') {
+      showToast('Access restricted: Parents can only access the Parent Portal.', 'error');
+      setActiveView('PARENT_PORTAL');
+      return;
+    }
+    if (activeRole === 'STUDENT' && normalized !== 'PUBLIC' && normalized !== 'STUDENT_PORTAL') {
+      showToast('Access restricted: Learners can only access the Learner Portal.', 'error');
+      setActiveView('STUDENT_PORTAL');
+      return;
+    }
+
     setActiveView(normalized);
     try {
       localStorage.setItem('glc_active_view', normalized);

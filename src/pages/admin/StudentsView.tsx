@@ -10,6 +10,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { StudentProfileModal } from '../../components/ui/StudentProfileModal';
 import { BatchBillingModal } from '../../components/ui/BatchBillingModal';
+import { printerService } from '../../services/printerService';
 import {
   UserPlus,
   Users,
@@ -32,6 +33,7 @@ import {
   CheckCircle,
   Send,
   DollarSign,
+  Printer,
 } from 'lucide-react';
 
 const GRADE_LEVELS: GradeLevel[] = [
@@ -503,6 +505,24 @@ export const StudentsView: React.FC = () => {
           </Button>
           <Button variant="outline" size="sm" icon={<Download className="w-4 h-4" />} onClick={exportCSV}>
             Export CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-blue-900 border-blue-200 bg-blue-50/70 hover:bg-blue-100 font-bold"
+            icon={<Printer className="w-4 h-4 text-blue-900" />}
+            onClick={async () => {
+              if (school) {
+                try {
+                  await printerService.printAllStudentIDCards(filteredStudents.length > 0 ? filteredStudents : students, school);
+                } catch (err: any) {
+                  showToast('Error printing ID cards grid: ' + err.message, 'error');
+                }
+              }
+            }}
+            disabled={loading || students.length === 0}
+          >
+            Print All ID Cards (Grid)
           </Button>
           <Button
             variant="outline"

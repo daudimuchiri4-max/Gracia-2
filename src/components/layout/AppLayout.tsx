@@ -100,59 +100,90 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     }
   };
 
-  const navSections: NavSection[] = [
-    {
-      title: 'Core Administration',
-      items: [
-        { id: 'DASHBOARD', label: 'Overview Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
-        { id: 'STUDENTS', label: 'Learners Directory', icon: <Users className="w-4 h-4" /> },
-        { id: 'ADMISSIONS', label: 'Online Admissions', icon: <UserPlus className="w-4 h-4" />, badge: 'New' },
-        { id: 'PARENTS', label: 'Parents / Guardians', icon: <Users className="w-4 h-4" /> },
-        { id: 'STAFF', label: 'Teaching & Staff (TSC)', icon: <UserCheck className="w-4 h-4" /> },
-      ],
-    },
-    {
-      title: 'Academics & CBC',
-      items: [
-        { id: 'ACADEMICS', label: 'Classes & Streams', icon: <GraduationCap className="w-4 h-4" /> },
-        { id: 'ASSESSMENTS', label: 'CBC Rubrics & Marks', icon: <Award className="w-4 h-4" /> },
-        { id: 'REPORT_CARDS', label: 'Terminal Report Cards', icon: <FileText className="w-4 h-4" /> },
-      ],
-    },
-    {
-      title: 'Operations & Finance',
-      items: [
-        { id: 'ATTENDANCE', label: 'Daily Attendance Roll', icon: <CalendarCheck className="w-4 h-4" /> },
-        { id: 'FEES', label: 'Fee Invoicing & Receipts', icon: <DollarSign className="w-4 h-4" /> },
-        { id: 'POS', label: 'Canteen & Store POS', icon: <ShoppingCart className="w-4 h-4" /> },
-        { id: 'INVENTORY', label: 'Inventory & Assets', icon: <Package className="w-4 h-4" /> },
-        { id: 'LIBRARY', label: 'Library & Reader Books', icon: <BookOpen className="w-4 h-4" /> },
-        { id: 'TRANSPORT', label: 'Bus Routes & Fleet', icon: <Bus className="w-4 h-4" /> },
-        { id: 'HEALTH_DISCIPLINE', label: 'Clinic & Discipline', icon: <HeartPulse className="w-4 h-4" /> },
-        { id: 'COMMUNICATION', label: 'Notices & Calendar', icon: <Megaphone className="w-4 h-4" /> },
-      ],
-    },
-    {
-      title: 'Website & System',
-      items: [
-        { id: 'PUBLIC', label: 'Public Website (Live)', icon: <Globe className="w-4 h-4 text-blue-600" />, badge: 'Live' },
-        { id: 'WEBSITE_CMS', label: 'Public Website CMS & Hero', icon: <Globe className="w-4 h-4" /> },
-        ...(activeRole === 'SUPER_ADMIN'
-          ? [
-              {
-                id: 'SAAS_BILLING' as ActiveView,
-                label: 'System Owner Console',
-                icon: <ShieldCheck className="w-4 h-4 text-indigo-600" />,
-                badge: 'Owner',
-              },
-            ]
-          : []),
-        { id: 'ROLES_PERMISSIONS', label: 'Roles & Permissions', icon: <ShieldCheck className="w-4 h-4 text-emerald-600" /> },
-        { id: 'REPORTS', label: 'Analytics & CSV Exports', icon: <BarChart2 className="w-4 h-4" /> },
-        { id: 'SETTINGS', label: 'School Settings', icon: <Settings className="w-4 h-4" /> },
-      ],
-    },
-  ];
+  const navSections: NavSection[] =
+    activeRole === 'TEACHER'
+      ? [
+          {
+            title: 'Teacher Workspace',
+            items: [
+              { id: 'TEACHER_PORTAL', label: 'Teacher Portal (Attendance & Marks)', icon: <CalendarCheck className="w-4 h-4" /> },
+              { id: 'PUBLIC', label: 'Public Website (Live)', icon: <Globe className="w-4 h-4 text-blue-600" />, badge: 'Live' },
+            ],
+          },
+        ]
+      : activeRole === 'PARENT'
+      ? [
+          {
+            title: 'Parent Workspace',
+            items: [
+              { id: 'PARENT_PORTAL', label: 'Parent Portal', icon: <Users className="w-4 h-4" /> },
+              { id: 'PUBLIC', label: 'Public Website (Live)', icon: <Globe className="w-4 h-4 text-blue-600" />, badge: 'Live' },
+            ],
+          },
+        ]
+      : activeRole === 'STUDENT'
+      ? [
+          {
+            title: 'Learner Workspace',
+            items: [
+              { id: 'STUDENT_PORTAL', label: 'Learner Portal', icon: <GraduationCap className="w-4 h-4" /> },
+              { id: 'PUBLIC', label: 'Public Website (Live)', icon: <Globe className="w-4 h-4 text-blue-600" />, badge: 'Live' },
+            ],
+          },
+        ]
+      : [
+          {
+            title: 'Core Administration',
+            items: [
+              { id: 'DASHBOARD', label: 'Overview Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+              { id: 'STUDENTS', label: 'Learners Directory', icon: <Users className="w-4 h-4" /> },
+              { id: 'ADMISSIONS', label: 'Online Admissions', icon: <UserPlus className="w-4 h-4" />, badge: 'New' },
+              { id: 'PARENTS', label: 'Parents / Guardians', icon: <Users className="w-4 h-4" /> },
+              { id: 'STAFF', label: 'Teaching & Staff (TSC)', icon: <UserCheck className="w-4 h-4" /> },
+            ],
+          },
+          {
+            title: 'Academics & CBC',
+            items: [
+              { id: 'ACADEMICS', label: 'Classes & Streams', icon: <GraduationCap className="w-4 h-4" /> },
+              { id: 'ASSESSMENTS', label: 'CBC Rubrics & Marks', icon: <Award className="w-4 h-4" /> },
+              { id: 'REPORT_CARDS', label: 'Terminal Report Cards', icon: <FileText className="w-4 h-4" /> },
+            ],
+          },
+          {
+            title: 'Operations & Finance',
+            items: [
+              { id: 'ATTENDANCE', label: 'Daily Attendance Roll', icon: <CalendarCheck className="w-4 h-4" /> },
+              { id: 'FEES', label: 'Fee Invoicing & Receipts', icon: <DollarSign className="w-4 h-4" /> },
+              { id: 'POS', label: 'Canteen & Store POS', icon: <ShoppingCart className="w-4 h-4" /> },
+              { id: 'INVENTORY', label: 'Inventory & Assets', icon: <Package className="w-4 h-4" /> },
+              { id: 'LIBRARY', label: 'Library & Reader Books', icon: <BookOpen className="w-4 h-4" /> },
+              { id: 'TRANSPORT', label: 'Bus Routes & Fleet', icon: <Bus className="w-4 h-4" /> },
+              { id: 'HEALTH_DISCIPLINE', label: 'Clinic & Discipline', icon: <HeartPulse className="w-4 h-4" /> },
+              { id: 'COMMUNICATION', label: 'Notices & Calendar', icon: <Megaphone className="w-4 h-4" /> },
+            ],
+          },
+          {
+            title: 'Website & System',
+            items: [
+              { id: 'PUBLIC', label: 'Public Website (Live)', icon: <Globe className="w-4 h-4 text-blue-600" />, badge: 'Live' },
+              { id: 'WEBSITE_CMS', label: 'Public Website CMS & Hero', icon: <Globe className="w-4 h-4" /> },
+              ...(activeRole === 'SUPER_ADMIN'
+                ? [
+                    {
+                      id: 'SAAS_BILLING' as ActiveView,
+                      label: 'System Owner Console',
+                      icon: <ShieldCheck className="w-4 h-4 text-indigo-600" />,
+                      badge: 'Owner',
+                    },
+                  ]
+                : []),
+              { id: 'ROLES_PERMISSIONS', label: 'Roles & Permissions', icon: <ShieldCheck className="w-4 h-4 text-emerald-600" /> },
+              { id: 'REPORTS', label: 'Analytics & CSV Exports', icon: <BarChart2 className="w-4 h-4" /> },
+              { id: 'SETTINGS', label: 'School Settings', icon: <Settings className="w-4 h-4" /> },
+            ],
+          },
+        ];
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
