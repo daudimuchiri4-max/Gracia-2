@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { studentService } from '../../services/studentService';
@@ -8,6 +8,7 @@ import { Student, Subject, GradeLevel, CBCRating, UserRole } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { StaffLoginModal } from '../../components/ui/StaffLoginModal';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
   CalendarCheck,
   Award,
@@ -557,91 +558,158 @@ export const TeacherPortal: React.FC = () => {
       </div>
 
       {/* QR Scanner Modal */}
-      {isQrScannerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
-                  <QrCode className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-900 text-base">Student ID QR Scanner</h3>
-                  <p className="text-xs text-slate-500">Scan student ID card QR code for instant roll call</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsQrScannerOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-sm px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
-              >
-                ✕
-              </button>
+      <QrScannerModal
+        isOpen={isQrScannerOpen}
+        onClose={() => setIsQrScannerOpen(false)}
+        students={students}
+        onScanSuccess={(code) => {
+          const trimmed = code.trim().toLowerCase();
+          const found = students.find(
+            (s) =>
+              s.admissionNumber.toLowerCase() === trimmed ||
+              s.id.toLowerCase() === trimmed ||
+              s.fullName.toLowerCase().includes(trimmed)
+          );
+          if (found) {
+            setAttendanceMap((p) => ({ ...p, [found.id]: 'PRESENT' }));
+            showToast(`✓ QR Scanned: ${found.fullName} (${found.admissionNumber}) marked PRESENT!`, 'success');
+          } else {
+            showToast(`QR Scanned "${code}": Student not found in current roster.`, 'warning');
+          }
+        }}
+      />
+    </div>
+  );
+};
+
+interface QrScannerModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  students: Student[];
+  onScanSuccess: (code: string) => void;
+}
+
+const QrScannerModal: React.FC<QrScannerModalProps> = ({
+  isOpen,
+  onClose,
+  students,
+  onScanSuccess,
+}) => {
+  useEffect(() => {
+    let html5QrCode: Html5Qrcode | null = null;
+    const scannerId = 'teacher-real-qr-reader-box';
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        try {
+          html5QrCode = new Html5Qrcode(scannerId);
+          html5QrCode
+            .start(
+              { facingMode: 'environment' },
+              {
+                fps: 10,
+                qrbox: { width: 220, height: 220 },
+              },
+              (decodedText) => {
+                onScanSuccess(decodedText);
+              },
+              () => {}
+            )
+            .catch((err) => {
+              console.warn('Camera start warning:', err);
+            });
+        } catch (e) {
+          console.warn('QR Scanner error:', e);
+        }
+      }, 300);
+
+      return () => {
+        clearTimeout(timer);
+        if (html5QrCode) {
+          if (html5QrCode.isScanning) {
+            html5QrCode
+              .stop()
+              .then(() => html5QrCode?.clear())
+              .catch(() => {});
+          } else {
+            try {
+              html5QrCode.clear();
+            } catch (e) {}
+          }
+        }
+      };
+    }
+  }, [isOpen, onScanSuccess]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-900/10 text-blue-900 flex items-center justify-center">
+              <QrCode className="w-5 h-5" />
             </div>
+            <div>
+              <h3 className="font-black text-slate-900 text-base">Student ID QR Scanner</h3>
+              <p className="text-xs text-slate-500">Scan student ID card QR code via camera for instant roll call</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 font-bold text-sm px-2.5 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
 
-            <div className="space-y-4">
-              <div className="p-4 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center shrink-0">
-                  <Scan className="w-4 h-4" />
-                </div>
-                <p className="text-xs text-blue-900 font-medium">
-                  Point device camera at student ID card QR code or click a student below to simulate scanning.
-                </p>
-              </div>
+        <div className="space-y-4">
+          <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center shrink-0">
+              <Camera className="w-4 h-4" />
+            </div>
+            <p className="text-xs text-blue-900 font-medium">
+              Point your device camera at student ID QR code or click a student below to instantly mark attendance.
+            </p>
+          </div>
 
-              {/* Viewfinder simulation */}
-              <div className="w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-36 flex items-center justify-center text-white text-xs relative">
-                <div className="absolute inset-0 border-2 border-dashed border-blue-400/50 m-4 rounded-xl flex items-center justify-center pointer-events-none">
-                  <span className="bg-black/60 px-3 py-1 rounded-full text-[10px] text-blue-300 font-mono">
-                    Align QR Code Here
+          {/* Real Camera Viewfinder Container */}
+          <div className="w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 min-h-[220px] relative flex items-center justify-center">
+            <div id="teacher-real-qr-reader-box" className="w-full" />
+          </div>
+
+          {/* Roster students tap-to-simulate */}
+          <div>
+            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
+              Roster Students (Click to Simulate / Fallback):
+            </label>
+            <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+              {students.map((std) => (
+                <div
+                  key={std.id}
+                  onClick={() => onScanSuccess(std.admissionNumber)}
+                  className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl flex items-center justify-between cursor-pointer transition-all"
+                >
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">{std.fullName}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">{std.admissionNumber}</p>
+                  </div>
+                  <span className="px-2.5 py-1 bg-blue-900 text-white text-[10px] font-bold rounded-lg shadow-2xs flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Scan QR
                   </span>
                 </div>
-                <div className="text-center p-6 space-y-1">
-                  <Camera className="w-6 h-6 mx-auto text-blue-400 animate-pulse" />
-                  <p className="text-slate-300 font-medium text-[11px]">Camera scanner active</p>
-                </div>
-              </div>
-
-              {/* Quick Simulator / Student Tap to Scan */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
-                  Roster Students (Click to Simulate QR Scan):
-                </label>
-                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
-                  {students.map((std) => (
-                    <div
-                      key={std.id}
-                      onClick={() => {
-                        setAttendanceMap((p) => ({ ...p, [std.id]: 'PRESENT' }));
-                        showToast(`✓ QR Scanned: ${std.fullName} (${std.admissionNumber}) marked PRESENT!`, 'success');
-                      }}
-                      className="p-2.5 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl flex items-center justify-between cursor-pointer transition-all"
-                    >
-                      <div>
-                        <p className="text-xs font-bold text-slate-900">{std.fullName}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">{std.admissionNumber}</p>
-                      </div>
-                      <span className="px-2.5 py-1 bg-blue-900 text-white text-[10px] font-bold rounded-lg shadow-2xs flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Scan ID QR
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setIsQrScannerOpen(false)}
-              >
-                Done Scanning
-              </Button>
+              ))}
             </div>
           </div>
         </div>
-      )}
+
+        <div className="pt-3 border-t border-slate-100 flex justify-end">
+          <Button variant="primary" size="sm" onClick={onClose}>
+            Done Scanning
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };
