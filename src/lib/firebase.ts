@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
@@ -20,10 +20,15 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 // Auth instance
 export const auth = getAuth(app);
 
-// Firestore instance
-export const db = getFirestore(app, firebaseConfigData.firestoreDatabaseId);
+// Firestore instance with robust local persistence cache
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+}, firebaseConfigData.firestoreDatabaseId);
 
 // Storage instance
 export const storage = getStorage(app);
 
 export default app;
+

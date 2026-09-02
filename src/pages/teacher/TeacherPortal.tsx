@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { studentService } from '../../services/studentService';
@@ -41,8 +41,26 @@ export const TeacherPortal: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, 'PRESENT' | 'ABSENT' | 'LATE' | 'SICK'>>({});
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [markMap, setMarkMap] = useState<Record<string, { score: number; comment: string }>>({});
+  const [savingMarks, setSavingMarks] = useState(false);
+
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [lastScanned, setLastScanned] = useState<{ id: string; time: number } | null>(null);
+  const lastScannedRef = useRef<{ id: string; time: number } | null>(null);
+  const isProcessingScanRef = useRef<boolean>(false);
+  const attendanceMapRef = useRef(attendanceMap);
+  const studentsRef = useRef(students);
+
+  useEffect(() => {
+    attendanceMapRef.current = attendanceMap;
+  }, [attendanceMap]);
+
+  useEffect(() => {
+    studentsRef.current = students;
+  }, [students]);
 
   const playWelcomeSound = (studentName: string) => {
     try {
@@ -87,6 +105,56 @@ export const TeacherPortal: React.FC = () => {
     }
   };
 
+  const handleScanSuccess = useCallback((code: string) => {
+    if (isProcessingScanRef.current) return;
+    const trimmed = code.trim().toLowerCase();
+    const currentStudents = studentsRef.current;
+    const currentAttendance = attendanceMapRef.current;
+    
+    const found = currentStudents.find(
+      (s) =>
+        s.admissionNumber.toLowerCase() === trimmed ||
+        s.id.toLowerCase() === trimmed ||
+        s.fullName.toLowerCase().includes(trimmed)
+    );
+
+    if (found) {
+      const now = Date.now();
+      if (lastScannedRef.current && lastScannedRef.current.id === found.id && now - lastScannedRef.current.time < 6000) {
+        // Ignore rapid duplicate scan
+        return;
+      }
+
+      if (currentAttendance[found.id] === 'PRESENT') {
+        isProcessingScanRef.current = true;
+        lastScannedRef.current = { id: found.id, time: now };
+        setLastScanned({ id: found.id, time: now });
+        showToast(`ℹ️ ${found.fullName} (${found.admissionNumber}) is already checked in!`, 'info');
+        setTimeout(() => {
+          isProcessingScanRef.current = false;
+        }, 1500);
+        return;
+      }
+
+      isProcessingScanRef.current = true;
+      lastScannedRef.current = { id: found.id, time: now };
+      setLastScanned({ id: found.id, time: now });
+      setAttendanceMap((p) => ({ ...p, [found.id]: 'PRESENT' }));
+      playWelcomeSound(found.fullName);
+      showToast(`🎉 Welcome! ${found.fullName} (${found.admissionNumber}) checked in successfully!`, 'success');
+
+      setTimeout(() => {
+        isProcessingScanRef.current = false;
+      }, 2000);
+    } else {
+      isProcessingScanRef.current = true;
+      showToast(`QR Scanned "${code}": Student not found in current roster.`, 'warning');
+      setTimeout(() => {
+        isProcessingScanRef.current = false;
+      }, 2000);
+    }
+  }, [showToast]);
+
   // Direct Teacher Login Form State
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -94,15 +162,6 @@ export const TeacherPortal: React.FC = () => {
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isStaffLoginModalOpen, setIsStaffLoginModalOpen] = useState(false);
-
-  // Attendance state
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, 'PRESENT' | 'ABSENT' | 'LATE' | 'SICK'>>({});
-  const [savingAttendance, setSavingAttendance] = useState(false);
-
-  // Marks state
-  const [markMap, setMarkMap] = useState<Record<string, { score: number; comment: string }>>({});
-  const [savingMarks, setSavingMarks] = useState(false);
 
   const isTeacherAuthenticated =
     user &&
@@ -606,35 +665,7 @@ export const TeacherPortal: React.FC = () => {
         isOpen={isQrScannerOpen}
         onClose={() => setIsQrScannerOpen(false)}
         students={students}
-        onScanSuccess={(code) => {
-          const trimmed = code.trim().toLowerCase();
-          const found = students.find(
-            (s) =>
-              s.admissionNumber.toLowerCase() === trimmed ||
-              s.id.toLowerCase() === trimmed ||
-              s.fullName.toLowerCase().includes(trimmed)
-          );
-          if (found) {
-            const now = Date.now();
-            if (lastScanned && lastScanned.id === found.id && now - lastScanned.time < 5000) {
-              // Ignore rapid duplicate scan of same student
-              return;
-            }
-
-            if (attendanceMap[found.id] === 'PRESENT') {
-              showToast(`ℹ️ ${found.fullName} (${found.admissionNumber}) is already checked in!`, 'info');
-              setLastScanned({ id: found.id, time: now });
-              return;
-            }
-
-            setAttendanceMap((p) => ({ ...p, [found.id]: 'PRESENT' }));
-            setLastScanned({ id: found.id, time: now });
-            playWelcomeSound(found.fullName);
-            showToast(`🎉 Welcome! ${found.fullName} (${found.admissionNumber}) checked in successfully!`, 'success');
-          } else {
-            showToast(`QR Scanned "${code}": Student not found in current roster.`, 'warning');
-          }
-        }}
+        onScanSuccess={handleScanSuccess}
       />
     </div>
   );
@@ -653,10 +684,43 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
   students,
   onScanSuccess,
 }) => {
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
+
+  const testAudio = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const audioCtx = new AudioContextClass();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance('Audio and microphone check successful. Gracia Learning Centre.');
+        utter.rate = 1.0;
+        window.speechSynthesis.speak(utter);
+      }
+    } catch (e) {
+      console.warn('Audio test notice:', e);
+    }
+  };
+
   useEffect(() => {
     let html5QrCode: Html5Qrcode | null = null;
     const scannerId = 'teacher-real-qr-reader-box';
     if (isOpen) {
+      setCameraError(null);
+      setCameraActive(false);
       const timer = setTimeout(() => {
         try {
           html5QrCode = new Html5Qrcode(scannerId);
@@ -672,11 +736,16 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
               },
               () => {}
             )
+            .then(() => {
+              setCameraActive(true);
+            })
             .catch((err) => {
               console.warn('Camera start warning:', err);
+              setCameraError('Camera feed unavailable in preview iframe or permission denied. Use 1-tap scan simulation below.');
             });
-        } catch (e) {
+        } catch (e: any) {
           console.warn('QR Scanner error:', e);
+          setCameraError(e.message || 'Camera initialization error.');
         }
       }, 300);
 
@@ -722,31 +791,57 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
         </div>
 
         <div className="space-y-4">
-          <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center shrink-0">
-              <Camera className="w-4 h-4" />
+          <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center shrink-0">
+                <Camera className="w-4 h-4" />
+              </div>
+              <p className="text-xs text-blue-900 font-medium">
+                {cameraActive ? '🟢 Camera active & scanning QR...' : cameraError ? '🟡 Using Instant 1-Tap Roster Simulation (Camera Sandboxed)' : '📷 Initializing camera stream...'}
+              </p>
             </div>
-            <p className="text-xs text-blue-900 font-medium">
-              Point your device camera at student ID QR code or click a student below to instantly mark attendance.
-            </p>
+            <button
+              onClick={testAudio}
+              className="px-3 py-1.5 bg-indigo-900 text-white text-[11px] font-bold rounded-xl shadow-xs hover:bg-indigo-800 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+            >
+              🔊 Test Sound
+            </button>
           </div>
 
           {/* Real Camera Viewfinder Container */}
-          <div className="w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 min-h-[220px] relative flex items-center justify-center">
+          <div className="w-full rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 min-h-[220px] relative flex flex-col items-center justify-center p-2">
             <div id="teacher-real-qr-reader-box" className="w-full" />
+            {cameraError && (
+              <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center space-y-2">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <p className="text-xs text-slate-200 font-medium max-w-xs">
+                  {cameraError}
+                </p>
+                <p className="text-[11px] text-amber-400 font-semibold">
+                  Select any student below for 1-tap check-in with audio confirmation!
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Roster students tap-to-simulate */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
-              Roster Students (Click to Simulate / Fallback):
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                Roster Students (Instant 1-Tap Simulation & Audio):
+              </label>
+              <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                Sound Enabled 🔊
+              </span>
+            </div>
             <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
               {students.map((std) => (
                 <div
                   key={std.id}
                   onClick={() => onScanSuccess(std.admissionNumber)}
-                  className="p-2 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl flex items-center justify-between cursor-pointer transition-all"
+                  className="p-2.5 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl flex items-center justify-between cursor-pointer transition-all"
                 >
                   <div>
                     <p className="text-xs font-bold text-slate-900">{std.fullName}</p>

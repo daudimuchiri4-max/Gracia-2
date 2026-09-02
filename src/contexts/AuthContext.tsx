@@ -27,10 +27,39 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = localStorage.getItem('glc_user');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
   const [school, setSchool] = useState<School | null>(DEFAULT_SCHOOL);
-  const [activeRole, setActiveRole] = useState<UserRole>('SCHOOL_ADMIN');
+  const [activeRole, setActiveRole] = useState<UserRole>(() => {
+    try {
+      const saved = localStorage.getItem('glc_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.role) return parsed.role;
+      }
+    } catch {}
+    return 'SCHOOL_ADMIN';
+  });
   const [loading, setLoading] = useState<boolean>(true);
+
+  const updateAndPersistUser = (profile: UserProfile | null) => {
+    setUser(profile);
+    if (profile) {
+      setActiveRole(profile.role);
+      try {
+        localStorage.setItem('glc_user', JSON.stringify(profile));
+      } catch {}
+    } else {
+      try {
+        localStorage.removeItem('glc_user');
+      } catch {}
+    }
+  };
 
   // Initialize Default School and Auth state
   useEffect(() => {
@@ -50,40 +79,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const unsubscribe = authService.onAuthStateChange(async (fUser) => {
       setFirebaseUser(fUser);
-      if (fUser) {
+      if (fUser && !fUser.isAnonymous) {
         let profile = await authService.getUserProfile(fUser.uid);
-        if (!profile) {
-          profile = {
-            id: fUser.uid,
-            email: fUser.email || 'admin@gracia.ac.ke',
-            fullName: fUser.displayName || 'School Administrator',
-            role: 'SCHOOL_ADMIN',
-            schoolId: DEFAULT_SCHOOL_ID,
-            status: 'ACTIVE',
-            createdAt: new Date().toISOString(),
-          };
-        }
-        if (mounted) {
-          setUser(profile);
-          setActiveRole(profile.role);
+        if (profile && mounted) {
+          updateAndPersistUser(profile);
         }
       } else {
         // Sign in anonymously in background so Firestore rules with authentication pass seamlessly
         authService.loginAnonymously().catch(() => {});
 
-        // Fallback demo/guest admin profile for seamless immediate access
-        const defaultAdminProfile: UserProfile = {
-          id: 'demo-admin-id',
-          email: 'admin@gracia.ac.ke',
-          fullName: 'Dr. Grace Wanjiku (Administrator)',
-          role: 'SCHOOL_ADMIN',
-          schoolId: DEFAULT_SCHOOL_ID,
-          status: 'ACTIVE',
-          createdAt: new Date().toISOString(),
-        };
-        if (mounted) {
-          setUser(defaultAdminProfile);
-          setActiveRole('SCHOOL_ADMIN');
+        // If no user is currently saved in localStorage, provide default admin profile
+        const existingLocalUser = localStorage.getItem('glc_user');
+        if (!existingLocalUser && mounted) {
+          const defaultAdminProfile: UserProfile = {
+            id: 'demo-admin-id',
+            email: 'admin@gracia.ac.ke',
+            fullName: 'Dr. Grace Wanjiku (Administrator)',
+            role: 'SCHOOL_ADMIN',
+            schoolId: DEFAULT_SCHOOL_ID,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+          };
+          updateAndPersistUser(defaultAdminProfile);
         }
       }
       if (mounted) setLoading(false);
@@ -107,7 +124,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const switchRole = (role: UserRole) => {
     setActiveRole(role);
     if (user) {
-      setUser({ ...user, role });
+      const updated = { ...user, role };
+      updateAndPersistUser(updated);
     }
   };
 
@@ -128,7 +146,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (sch) {
         setSchool(sch);
         if (user) {
-          setUser({ ...user, schoolId });
+          const updated = { ...user, schoolId };
+          updateAndPersistUser(updated);
         }
       }
     } finally {
@@ -149,8 +168,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (email: string, pass: string) => {
     const profile = await authService.login(email, pass);
-    setUser(profile);
-    setActiveRole(profile.role);
+    updateAndPersistUser(profile);
     if (profile.schoolId) {
       await switchSchool(profile.schoolId);
     }
@@ -159,8 +177,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const loginWithGoogle = async () => {
     const profile = await authService.loginWithGoogle();
-    setUser(profile);
-    setActiveRole(profile.role);
+    updateAndPersistUser(profile);
     if (profile.schoolId) {
       await switchSchool(profile.schoolId);
     }
@@ -169,15 +186,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const register = async (email: string, pass: string, fullName: string, role: UserRole = 'SCHOOL_ADMIN', schoolId = DEFAULT_SCHOOL_ID) => {
     const profile = await authService.register(email, pass, fullName, role, schoolId);
-    setUser(profile);
-    setActiveRole(profile.role);
+    updateAndPersistUser(profile);
     await switchSchool(schoolId);
     return profile;
   };
 
   const logout = async () => {
     await authService.logout();
-    setUser(null);
+    updateAndPersistUser(null);
   };
 
   return (

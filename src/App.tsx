@@ -169,6 +169,17 @@ const normalizeView = (v: string): ActiveView => {
 const getInitialView = (): ActiveView => {
   if (typeof window === 'undefined') return 'PUBLIC';
 
+  // 0. Check saved user role first for strict portal routing
+  try {
+    const savedUser = localStorage.getItem('glc_user');
+    if (savedUser) {
+      const userObj = JSON.parse(savedUser);
+      if (userObj.role === 'TEACHER') return 'TEACHER_PORTAL';
+      if (userObj.role === 'PARENT') return 'PARENT_PORTAL';
+      if (userObj.role === 'STUDENT') return 'STUDENT_PORTAL';
+    }
+  } catch {}
+
   // 1. Check URL query params ?view=... or ?page=...
   try {
     const searchParams = new URLSearchParams(window.location.search);
@@ -199,6 +210,10 @@ const getInitialView = (): ActiveView => {
     const savedUser = localStorage.getItem('glc_user');
     const savedView = localStorage.getItem('glc_active_view');
     if (savedUser && savedView && savedView !== 'PUBLIC') {
+      const userObj = JSON.parse(savedUser);
+      if (userObj.role === 'TEACHER') return 'TEACHER_PORTAL';
+      if (userObj.role === 'PARENT') return 'PARENT_PORTAL';
+      if (userObj.role === 'STUDENT') return 'STUDENT_PORTAL';
       return normalizeView(savedView);
     }
   } catch {}
@@ -232,6 +247,16 @@ const MainAppContent: React.FC = () => {
       localStorage.setItem('glc_active_view', activeView);
     } catch {}
   }, [activeView]);
+
+  React.useEffect(() => {
+    if (activeRole === 'TEACHER' && activeView !== 'PUBLIC' && activeView !== 'TEACHER_PORTAL') {
+      setActiveView('TEACHER_PORTAL');
+    } else if (activeRole === 'PARENT' && activeView !== 'PUBLIC' && activeView !== 'PARENT_PORTAL') {
+      setActiveView('PARENT_PORTAL');
+    } else if (activeRole === 'STUDENT' && activeView !== 'PUBLIC' && activeView !== 'STUDENT_PORTAL') {
+      setActiveView('STUDENT_PORTAL');
+    }
+  }, [activeRole]);
 
   React.useEffect(() => {
     const loadSub = async () => {
