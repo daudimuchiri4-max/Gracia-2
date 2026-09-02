@@ -1,11 +1,12 @@
 import { collection, doc, setDoc, getDocs, limit, query, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { AuditLog, UserRole } from '../types';
+import { cleanForFirestore } from '../utils/firestoreHelper';
 
 export const auditService = {
   async logAction(
     schoolId: string,
-    user: { id: string; name: string; role: UserRole },
+    user: { id: string; name?: string; role?: UserRole },
     action: string,
     module: AuditLog['module'],
     details: string
@@ -13,17 +14,17 @@ export const auditService = {
     try {
       const colRef = collection(db, 'schools', schoolId, 'auditLogs');
       const newDoc = doc(colRef);
-      const log: AuditLog = {
+      const log = cleanForFirestore({
         id: newDoc.id,
         schoolId,
-        userId: user.id,
-        userName: user.name,
-        userRole: user.role,
+        userId: user?.id || 'system',
+        userName: user?.name || 'System / Admin',
+        userRole: user?.role || 'ADMIN',
         action,
         module,
         details,
         timestamp: new Date().toISOString(),
-      };
+      });
       await setDoc(newDoc, log);
     } catch (e) {
       console.error('Audit logging error:', e);
