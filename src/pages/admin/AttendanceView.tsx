@@ -1813,12 +1813,15 @@ export const AttendanceView: React.FC = () => {
                 variant="primary"
                 size="sm"
                 icon={<Printer className="w-3.5 h-3.5" />}
-                onClick={() =>
-                  printerService.printTargetElement(
-                    'printable-class-qr-cards',
-                    `Student_ID_Cards_${badgeClassFilter}_${badgeStreamFilter}`
-                  )
-                }
+                onClick={async () => {
+                  try {
+                    await printerService.printAllStudentIDCards(badgeStudents, school);
+                    showToast(`Successfully generated ${badgeStudents.length} student badges for printing!`, 'success');
+                  } catch (err: any) {
+                    showToast('Error printing badges: ' + err.message, 'error');
+                  }
+                }}
+                disabled={badgeStudents.length === 0}
               >
                 Print Badges
               </Button>

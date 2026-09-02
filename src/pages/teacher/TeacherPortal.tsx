@@ -46,18 +46,28 @@ export const TeacherPortal: React.FC = () => {
 
   const playWelcomeSound = (studentName: string) => {
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
-      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.45);
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const audioCtx = new AudioContextClass();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+        setTimeout(() => {
+          try {
+            if (audioCtx.state !== 'closed') {
+              audioCtx.close();
+            }
+          } catch (err) {}
+        }, 500);
+      }
     } catch (e) {
       // Audio context fallback
     }
@@ -69,6 +79,7 @@ export const TeacherPortal: React.FC = () => {
         const utterance = new SpeechSynthesisUtterance(`Welcome to Gracia Learning Centre, ${firstName}`);
         utterance.rate = 1.0;
         utterance.pitch = 1.1;
+        utterance.onerror = () => {};
         window.speechSynthesis.speak(utterance);
       }
     } catch (e) {

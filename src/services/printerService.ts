@@ -537,76 +537,94 @@ class PrinterService {
    * Print Student ID Card / Lanyard Badge (Front & Back standard CR80)
    */
   public async printStudentIDCard(student: Student, school: School | null): Promise<void> {
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(`
+        <html>
+        <head><title>Generating ID Card...</title></head>
+        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: #fff;">
+          <h2>Generating Student ID Card for ${student.fullName}...</h2>
+        </body>
+        </html>
+      `);
+    }
+
     const html = await this.generateStudentIDCardHtml(student, school);
-    this.printViaIframe(html, 'ID_CARD', `ID_Card_${student.admissionNumber.replace(/\//g, '_')}`);
+    if (printWin) {
+      printWin.document.open();
+      printWin.document.write(html);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => printWin.print(), 500);
+    } else {
+      this.printViaIframe(html, 'ID_CARD', `ID_Card_${student.admissionNumber.replace(/\//g, '_')}`);
+    }
   }
 
   /**
    * Print All Student ID Cards in a grid on A4 sheets (CR80 cards, scannable QR codes)
    */
   public async printAllStudentIDCards(students: Student[], school: School | null): Promise<void> {
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(`
+        <html>
+        <head><title>Generating Student ID Cards...</title></head>
+        <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #0f172a; color: #fff;">
+          <div style="text-align: center;">
+            <h2>Generating Portrait Student ID Cards & QR Codes (${students.length} students)...</h2>
+            <p style="color: #94a3b8; margin-top: 8px;">Please wait a moment.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
     const schoolLogo = (school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg';
     
     let cardsHtml = '';
     for (const student of students) {
       let qrCodeDataUrl = '';
       try {
-        const qrPayload = JSON.stringify({
-          type: 'STUDENT_ATTENDANCE',
-          schoolId: school?.id || 'default',
-          studentId: student.id,
-          admissionNumber: student.admissionNumber,
-          fullName: student.fullName,
-          classLevel: `${student.currentClass} ${student.stream || ''}`.trim(),
-        });
+        const qrPayload = student.admissionNumber;
         qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
-          errorCorrectionLevel: 'M',
-          margin: 1,
-          width: 150,
+          errorCorrectionLevel: 'H',
+          margin: 2,
+          width: 300,
           color: { dark: '#0f172a', light: '#ffffff' }
         });
       } catch (e) {
         console.error('Error generating ID card QR:', e);
       }
 
-      const photoHtml = student.photoUrl
-        ? `<img src="${student.photoUrl}" style="width: 100%; height: 100%; object-fit: cover;" />`
-        : `<span style="font-size: 7px; color: #94a3b8;">NO PHOTO</span>`;
-
       cardsHtml += `
         <div class="id-card">
           <div class="card-header">
-            <div style="display: flex; align-items: center;">
-              <img src="${schoolLogo}" class="school-logo" alt="Logo" />
-              <div class="school-info">
-                <div class="school-name">${school?.name || 'Gracia Learning Centre'}</div>
-                <div class="school-sub">Official Learner Identity Card</div>
-              </div>
+            <img src="${schoolLogo}" class="school-logo" alt="Logo" />
+            <div class="school-info">
+              <div class="school-name">${school?.name || 'Gracia Learning Centre'}</div>
+              <div class="school-sub">Official Learner Identity Card</div>
             </div>
             <div class="badge-type">STUDENT</div>
           </div>
 
           <div class="card-body">
-            <div class="photo-box">
-              ${photoHtml}
-            </div>
             <div class="info-list">
               <div class="name">${student.fullName}</div>
-              <div><strong>Adm No:</strong> <span style="font-family: monospace; color: #60a5fa; font-weight: bold;">${student.admissionNumber}</span></div>
-              <div><strong>Grade:</strong> ${student.currentClass} ${student.stream ? `• ${student.stream}` : ''}</div>
+              <div style="font-size: 8px; margin-bottom: 4px;"><strong>Adm:</strong> <span style="font-family: monospace; color: #60a5fa; font-weight: bold;">${student.admissionNumber}</span> • <strong>Class:</strong> ${student.currentClass} ${student.stream || ''}</div>
+            </div>
+            <div class="qr-box-large">
+              ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:9px; color:#000;">QR</span>`}
+            </div>
+            <div class="info-list" style="margin-top: 4px;">
               <div><strong>Gender:</strong> ${student.gender || 'N/A'} | <strong>Blood:</strong> ${student.bloodGroup || 'O+'}</div>
               <div><strong>Emergency:</strong> ${student.parentPhone || student.emergencyPhone || school?.phone || '+254 722 000 000'}</div>
             </div>
           </div>
 
           <div class="card-footer">
-            <div>
-              <div style="font-weight: bold; color: #fff;">Valid: 2026 Academic Yr</div>
-              <div style="font-size: 6.5px; color: #93c5fd;">Ministry of Education CBC</div>
-            </div>
-            <div class="qr-box">
-              ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:6px; color:#000;">QR</span>`}
-            </div>
+            <div style="font-weight: bold; color: #fff;">Valid: 2026 Academic Yr</div>
+            <div style="font-size: 6px; color: #93c5fd;">Ministry of Education CBC</div>
           </div>
         </div>
       `;
@@ -624,14 +642,14 @@ class PrinterService {
           body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; padding: 5mm; }
           .grid-container {
             display: grid;
-            grid-template-columns: repeat(2, 85.6mm);
-            gap: 8mm;
+            grid-template-columns: repeat(3, 53.98mm);
+            gap: 6mm;
             justify-content: center;
             align-content: start;
           }
           .id-card {
-            width: 85.6mm;
-            height: 53.98mm;
+            width: 53.98mm;
+            height: 85.6mm;
             background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
             color: #fff;
             border-radius: 8px;
@@ -643,70 +661,70 @@ class PrinterService {
             border: 1.5px solid #3b82f6;
             page-break-inside: avoid;
             break-inside: avoid;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
           }
           .card-header {
-            padding: 6px 10px;
+            padding: 8px 8px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: space-between;
+            text-align: center;
             border-bottom: 1px solid rgba(255,255,255,0.15);
           }
-          .school-logo { width: 24px; height: 24px; object-fit: contain; background: #fff; border-radius: 3px; padding: 1px; }
-          .school-info { display: flex; flex-direction: column; margin-left: 6px; }
-          .school-name { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; }
-          .school-sub { font-size: 6px; color: #93c5fd; }
-          .badge-type { background: #2563eb; color: #fff; font-size: 6.5px; font-weight: bold; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; }
+          .school-logo { width: 28px; height: 28px; object-fit: contain; background: #fff; border-radius: 3px; padding: 2px; margin-bottom: 3px; }
+          .school-info { display: flex; flex-direction: column; align-items: center; }
+          .school-name { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; line-height: 1.2; }
+          .school-sub { font-size: 5.5px; color: #93c5fd; }
+          .badge-type { background: #2563eb; color: #fff; font-size: 6px; font-weight: bold; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; margin-top: 3px; }
           
           .card-body {
-            padding: 6px 10px;
+            padding: 8px 8px;
             display: flex;
-            gap: 8px;
+            flex-direction: column;
             align-items: center;
+            text-align: center;
+            gap: 6px;
+            flex-grow: 1;
+            justify-content: center;
           }
-          .photo-box {
-            width: 54px;
-            height: 66px;
-            background: #1e293b;
-            border: 1.5px solid #60a5fa;
-            border-radius: 5px;
+          .qr-box-large {
+            width: 96px;
+            height: 96px;
+            background: #ffffff;
+            border: 2.5px solid #60a5fa;
+            border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 7px;
-            color: #94a3b8;
-            text-align: center;
-            overflow: hidden;
-            flex-shrink: 0;
+            padding: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
           }
-          .info-list { font-size: 8px; line-height: 1.3; color: #f8fafc; flex-grow: 1; }
-          .info-list .name { font-size: 11px; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-transform: uppercase; }
+          .qr-box-large img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            image-rendering: pixelated;
+          }
+          .info-list { font-size: 7.5px; line-height: 1.3; color: #f8fafc; width: 100%; }
+          .info-list .name { font-size: 10px; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-transform: uppercase; }
           
           .card-footer {
-            background: rgba(0,0,0,0.2);
-            padding: 4px 10px;
+            background: rgba(0,0,0,0.25);
+            padding: 5px 8px;
             display: flex;
-            justify-content: space-between;
+            flex-direction: column;
             align-items: center;
-            font-size: 7px;
+            text-align: center;
+            font-size: 6.5px;
             color: #cbd5e1;
             border-top: 1px solid rgba(255,255,255,0.1);
+            gap: 1px;
           }
-          .qr-box {
-            width: 32px;
-            height: 32px;
-            background: #fff;
-            padding: 2px;
-            border-radius: 3px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          .qr-box img { width: 100%; height: 100%; object-fit: contain; }
         </style>
       </head>
       <body>
         <div style="text-align: center; margin-bottom: 12px; font-size: 11px; font-weight: bold; color: #0f172a;">
-          ${school?.name || 'Gracia Learning Centre'} — Batch Student ID Cards (${students.length} Cards)
+          ${school?.name || 'Gracia Learning Centre'} — Portrait Student ID Cards (${students.length} Cards)
         </div>
         <div class="grid-container">
           ${cardsHtml}
@@ -715,7 +733,17 @@ class PrinterService {
       </html>
     `;
 
-    this.printViaIframe(html, 'A4', `Student_ID_Cards_Grid_${school?.code || 'School'}`);
+    if (printWin) {
+      printWin.document.open();
+      printWin.document.write(html);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => {
+        printWin.print();
+      }, 500);
+    } else {
+      this.printViaIframe(html, 'A4', `Student_ID_Cards_Grid_${school?.code || 'School'}`);
+    }
   }
 
   /**
@@ -1290,18 +1318,11 @@ class PrinterService {
     const schoolLogo = (school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg';
     let qrCodeDataUrl = '';
     try {
-      const qrPayload = JSON.stringify({
-        type: 'STUDENT_ATTENDANCE',
-        schoolId: school?.id || 'default',
-        studentId: student.id,
-        admissionNumber: student.admissionNumber,
-        fullName: student.fullName,
-        classLevel: `${student.currentClass} ${student.stream || ''}`.trim(),
-      });
+      const qrPayload = student.admissionNumber;
       qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
-        errorCorrectionLevel: 'M',
-        margin: 1,
-        width: 150,
+        errorCorrectionLevel: 'H',
+        margin: 2,
+        width: 300,
         color: { dark: '#0f172a', light: '#ffffff' }
       });
     } catch (e) {
@@ -1320,8 +1341,8 @@ class PrinterService {
           body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #fff; padding: 10px; display: flex; flex-direction: column; gap: 15px; align-items: center; }
           .card-container { display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; page-break-inside: avoid; }
           .id-card {
-            width: 85.6mm;
-            height: 53.98mm;
+            width: 53.98mm;
+            height: 85.6mm;
             background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
             color: #fff;
             border-radius: 10px;
@@ -1339,10 +1360,11 @@ class PrinterService {
             border: 1.5px solid #cbd5e1;
           }
           .card-header {
-            padding: 8px 12px;
+            padding: 8px 10px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: space-between;
+            text-align: center;
             border-bottom: 1px solid rgba(255,255,255,0.15);
           }
           .card-back .card-header {
@@ -1350,65 +1372,63 @@ class PrinterService {
             border-bottom: 1px solid #e2e8f0;
             color: #0f172a;
           }
-          .school-logo { width: 28px; height: 28px; object-fit: contain; background: #fff; border-radius: 4px; padding: 2px; }
-          .school-info { display: flex; flex-direction: column; margin-left: 8px; }
-          .school-name { font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; }
-          .school-sub { font-size: 6.5px; color: #93c5fd; }
+          .school-logo { width: 32px; height: 32px; object-fit: contain; background: #fff; border-radius: 4px; padding: 2px; margin-bottom: 4px; }
+          .school-info { display: flex; flex-direction: column; align-items: center; }
+          .school-name { font-size: 9.5px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.2px; line-height: 1.2; }
+          .school-sub { font-size: 6px; color: #93c5fd; }
           .card-back .school-sub { color: #64748b; }
-          .badge-type { background: #2563eb; color: #fff; font-size: 7px; font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+          .badge-type { background: #2563eb; color: #fff; font-size: 6.5px; font-weight: bold; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; margin-top: 4px; }
           
           .card-body {
-            padding: 8px 12px;
+            padding: 8px 10px;
             display: flex;
-            gap: 10px;
+            flex-direction: column;
             align-items: center;
+            text-align: center;
+            gap: 6px;
+            flex-grow: 1;
+            justify-content: center;
           }
-          .photo-box {
-            width: 62px;
-            height: 74px;
-            background: #1e293b;
-            border: 2px solid #60a5fa;
-            border-radius: 6px;
+          .qr-box-large {
+            width: 110px;
+            height: 110px;
+            background: #ffffff;
+            border: 3px solid #60a5fa;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 8px;
-            color: #94a3b8;
-            text-align: center;
-            overflow: hidden;
-            flex-shrink: 0;
+            padding: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
           }
-          .info-list { font-size: 8.5px; line-height: 1.35; color: #f8fafc; flex-grow: 1; }
+          .qr-box-large img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            image-rendering: pixelated;
+          }
+          .info-list { font-size: 8px; line-height: 1.35; color: #f8fafc; width: 100%; }
           .card-back .info-list { color: #334155; }
-          .info-list .name { font-size: 11.5px; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-transform: uppercase; }
+          .info-list .name { font-size: 10.5px; font-weight: 900; color: #ffffff; margin-bottom: 2px; text-transform: uppercase; }
           .card-back .info-list .name { color: #0f172a; }
           
           .card-footer {
-            background: rgba(0,0,0,0.2);
-            padding: 5px 12px;
+            background: rgba(0,0,0,0.25);
+            padding: 6px 10px;
             display: flex;
-            justify-content: space-between;
+            flex-direction: column;
             align-items: center;
-            font-size: 7.5px;
+            text-align: center;
+            font-size: 7px;
             color: #cbd5e1;
             border-top: 1px solid rgba(255,255,255,0.1);
+            gap: 2px;
           }
           .card-back .card-footer {
             background: #f8fafc;
             color: #64748b;
             border-top: 1px solid #e2e8f0;
           }
-          .qr-box {
-            width: 38px;
-            height: 38px;
-            background: #fff;
-            padding: 2px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          .qr-box img { width: 100%; height: 100%; object-fit: contain; }
         </style>
       </head>
       <body>
@@ -1416,41 +1436,31 @@ class PrinterService {
           <!-- FRONT SIDE -->
           <div class="id-card">
             <div class="card-header">
-              <div style="display: flex; align-items: center;">
-                <img src="${schoolLogo}" class="school-logo" alt="Logo" />
-                <div class="school-info">
-                  <div class="school-name">${school?.name || 'Gracia Learning Centre'}</div>
-                  <div class="school-sub">Official Learner Identity Card</div>
-                </div>
+              <img src="${schoolLogo}" class="school-logo" alt="Logo" />
+              <div class="school-info">
+                <div class="school-name">${school?.name || 'Gracia Learning Centre'}</div>
+                <div class="school-sub">Official Learner Identity Card</div>
               </div>
               <div class="badge-type">STUDENT</div>
             </div>
 
             <div class="card-body">
-              <div class="photo-box">
-                ${
-                  student.photoUrl
-                    ? `<img src="${student.photoUrl}" style="width: 100%; height: 100%; object-fit: cover;" />`
-                    : `<span style="font-size: 7px; color: #94a3b8;">NO PHOTO</span>`
-                }
-              </div>
               <div class="info-list">
                 <div class="name">${student.fullName}</div>
-                <div><strong>Adm No:</strong> <span style="font-family: monospace; color: #60a5fa; font-weight: bold;">${student.admissionNumber}</span></div>
-                <div><strong>Grade:</strong> ${student.currentClass} ${student.stream ? `• ${student.stream}` : ''}</div>
+                <div style="font-size: 8.5px; margin-bottom: 4px;"><strong>Adm:</strong> <span style="font-family: monospace; color: #60a5fa; font-weight: bold;">${student.admissionNumber}</span> • <strong>Class:</strong> ${student.currentClass} ${student.stream || ''}</div>
+              </div>
+              <div class="qr-box-large">
+                ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:9px; color:#000;">QR</span>`}
+              </div>
+              <div class="info-list" style="margin-top: 4px;">
                 <div><strong>Gender:</strong> ${student.gender || 'N/A'} | <strong>Blood:</strong> ${student.bloodGroup || 'O+'}</div>
                 <div><strong>Emergency:</strong> ${student.parentPhone || student.emergencyPhone || school?.phone || '+254 722 000 000'}</div>
               </div>
             </div>
 
             <div class="card-footer">
-              <div>
-                <div style="font-weight: bold; color: #fff;">Valid: 2026 Academic Yr</div>
-                <div style="font-size: 6.5px; color: #93c5fd;">Ministry of Education CBC</div>
-              </div>
-              <div class="qr-box">
-                ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:6px; color:#000;">QR</span>`}
-              </div>
+              <div style="font-weight: bold; color: #fff;">Valid: 2026 Academic Yr</div>
+              <div style="font-size: 6.5px; color: #93c5fd;">Ministry of Education CBC</div>
             </div>
           </div>
 
