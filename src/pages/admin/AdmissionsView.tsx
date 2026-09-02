@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { operationsService } from '../../services/operationsService';
 import { studentService } from '../../services/studentService';
+import { feeService } from '../../services/feeAndPaymentService';
 import { AdmissionApplication, GradeLevel } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -72,7 +73,7 @@ export const AdmissionsView: React.FC = () => {
         school?.academicYear || '2026'
       );
 
-      await studentService.createStudent(school!.id, {
+      const newStudent = await studentService.createStudent(school!.id, {
         admissionNumber: admNumber,
         firstName,
         lastName,
@@ -97,6 +98,20 @@ export const AdmissionsView: React.FC = () => {
         emergencyPhone: app.parentPhone,
         totalBalance: 0,
       });
+
+      // Automatically bill the newly enrolled student for the current term (Term 1, 2026)
+      try {
+        await feeService.billAllStudents(school!.id, {
+          academicYear: school?.academicYear || '2026',
+          term: 'Term 1',
+          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          scope: 'SELECTED',
+          studentIds: [newStudent.id],
+          skipAlreadyBilled: false,
+        });
+      } catch (billingErr) {
+        console.error('Auto-billing admission student error:', billingErr);
+      }
 
       await operationsService.updateAdmissionStatus(school!.id, app.id, 'ENROLLED');
       showToast(`Applicant ${app.studentFullName} successfully enrolled as student (${admNumber})!`, 'success');

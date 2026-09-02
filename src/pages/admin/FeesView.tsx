@@ -441,6 +441,20 @@ export const FeesView: React.FC = () => {
     }
   };
 
+  const handleUnbillInvoice = async (invoiceId: string) => {
+    if (!school?.id) return;
+    if (!window.confirm('Are you sure you want to unbill / delete this student invoice? This will adjust the student balance accordingly.')) {
+      return;
+    }
+    try {
+      await feeService.deleteInvoice(school.id, invoiceId);
+      showToast('Student invoice unbilled successfully.', 'success');
+      await loadFinanceData();
+    } catch (e: any) {
+      showToast('Error unbilling invoice: ' + e.message, 'error');
+    }
+  };
+
   // Add line item in modal
   const handleAddStructureItem = () => {
     setStructureFormData((prev) => ({
@@ -1359,6 +1373,7 @@ export const FeesView: React.FC = () => {
                   <th className="p-3.5">Paid Amount</th>
                   <th className="p-3.5">Balance</th>
                   <th className="p-3.5">Status</th>
+                  <th className="p-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1409,6 +1424,18 @@ export const FeesView: React.FC = () => {
                         >
                           {inv.status.replace('_', ' ')}
                         </Badge>
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-rose-600 border-rose-200 bg-white hover:bg-rose-50 text-[11px] h-7 px-2.5 font-medium"
+                          icon={<Trash2 className="w-3 h-3 text-rose-500" />}
+                          onClick={() => handleUnbillInvoice(inv.id)}
+                          title="Unbill / Delete this invoice"
+                        >
+                          Unbill
+                        </Button>
                       </td>
                     </tr>
                   );

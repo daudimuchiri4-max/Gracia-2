@@ -181,6 +181,20 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
     }
   };
 
+  const handleUnbillStudentInvoice = async (invoiceId: string) => {
+    if (!school?.id) return;
+    if (!window.confirm('Are you sure you want to unbill / delete this student invoice? This will adjust the student balance accordingly.')) {
+      return;
+    }
+    try {
+      await feeService.deleteInvoice(school.id, invoiceId);
+      await loadStudentDetails();
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      alert('Error unbilling invoice: ' + err.message);
+    }
+  };
+
   if (!student) return null;
 
   // Calculate age from DOB
@@ -550,6 +564,54 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                   {school?.currencySymbol || 'KSh'} {calculatedBalance.toLocaleString()}
                 </span>
               </div>
+            </div>
+
+            {/* Term Invoices / Bills History */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="p-3.5 bg-slate-50 font-bold text-slate-900 border-b border-slate-200 flex items-center justify-between">
+                <span>Issued Term Invoices & Bills ({invoices.length})</span>
+              </div>
+
+              {invoices.length === 0 ? (
+                <div className="p-6 text-center text-slate-400">
+                  <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                  <p>No fee invoices issued for this student yet.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {invoices.map((inv) => (
+                    <div key={inv.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900">{inv.invoiceNumber}</span>
+                          <span className="text-[11px] text-slate-500">{inv.academicYear} • {inv.term}</span>
+                          <Badge
+                            variant={inv.status === 'PAID' ? 'success' : inv.status === 'PARTIALLY_PAID' ? 'warning' : 'danger'}
+                            size="sm"
+                          >
+                            {inv.status.replace('_', ' ')}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Billed: <strong className="text-slate-900">{school?.currencySymbol || 'KSh'} {inv.totalAmount.toLocaleString()}</strong> • Balance: <strong className="text-rose-700">{school?.currencySymbol || 'KSh'} {inv.balance.toLocaleString()}</strong>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-rose-600 border-rose-200 bg-white hover:bg-rose-50 text-[11px] h-7 px-2.5 font-medium"
+                          icon={<Trash2 className="w-3 h-3 text-rose-500" />}
+                          onClick={() => handleUnbillStudentInvoice(inv.id)}
+                          title="Unbill / Delete this invoice"
+                        >
+                          Unbill
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Payment Receipts History */}

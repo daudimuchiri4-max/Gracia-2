@@ -344,6 +344,28 @@ export const feeService = {
     return invoice;
   },
 
+  async deleteInvoice(schoolId: string, invoiceId: string): Promise<void> {
+    try {
+      const invRef = doc(db, 'schools', schoolId, 'invoices', invoiceId);
+      const invSnap = await getDoc(invRef);
+      if (!invSnap.exists()) return;
+      const inv = invSnap.data() as Invoice;
+
+      await deleteDoc(invRef);
+
+      const student = await studentService.getStudentById(schoolId, inv.studentId);
+      if (student) {
+        const currentBal = student.totalBalance || 0;
+        const unbilledAmount = inv.balance !== undefined ? inv.balance : (inv.totalAmount - (inv.paidAmount || 0));
+        const newBal = Math.max(0, currentBal - unbilledAmount);
+        await studentService.updateStudent(schoolId, inv.studentId, { totalBalance: newBal });
+      }
+    } catch (e) {
+      console.error('Error deleting/unbilling invoice:', e);
+      throw e;
+    }
+  },
+
   /**
    * Batch bill all students in the school or within a selected grade/selection.
    * Uses chunked Firestore batch writes to issue invoices and update student balances.
