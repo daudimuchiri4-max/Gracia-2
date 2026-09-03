@@ -366,6 +366,51 @@ export const feeService = {
     }
   },
 
+  async updateInvoice(
+    schoolId: string,
+    invoiceId: string,
+    updates: Partial<Invoice>
+  ): Promise<Invoice> {
+    const invRef = doc(db, 'schools', schoolId, 'invoices', invoiceId);
+    const invSnap = await getDoc(invRef);
+    if (!invSnap.exists()) {
+      throw new Error('Invoice not found');
+    }
+    const oldInv = invSnap.data() as Invoice;
+
+    const items = updates.items !== undefined ? updates.items : oldInv.items;
+    const totalAmount = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+    const paidAmount = oldInv.paidAmount || 0;
+    const balance = Math.max(0, totalAmount - paidAmount);
+    const status: Invoice['status'] = paidAmount >= totalAmount ? 'PAID' : paidAmount > 0 ? 'PARTIALLY_PAID' : 'UNPAID';
+
+    const updatedInvoice: Invoice = {
+      ...oldInv,
+      ...updates,
+      items,
+      totalAmount,
+      balance,
+      status,
+    };
+
+    await setDoc(invRef, cleanForFirestore(updatedInvoice), { merge: true });
+
+    const oldUnbilled = oldInv.balance !== undefined ? oldInv.balance : (oldInv.totalAmount - (oldInv.paidAmount || 0));
+    const newUnbilled = balance;
+    const diff = newUnbilled - oldUnbilled;
+
+    if (diff !== 0) {
+      const student = await studentService.getStudentById(schoolId, oldInv.studentId);
+      if (student) {
+        const currentBal = student.totalBalance || 0;
+        const newBal = Math.max(0, currentBal + diff);
+        await studentService.updateStudent(schoolId, oldInv.studentId, { totalBalance: newBal });
+      }
+    }
+
+    return updatedInvoice;
+  },
+
   /**
    * Batch bill all students in the school or within a selected grade/selection.
    * Uses chunked Firestore batch writes to issue invoices and update student balances.
