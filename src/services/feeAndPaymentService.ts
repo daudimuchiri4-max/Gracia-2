@@ -366,6 +366,55 @@ export const feeService = {
     }
   },
 
+  async unbillTermInvoices(
+    schoolId: string,
+    term: 'Term 1' | 'Term 2' | 'Term 3',
+    academicYear: string = '2026'
+  ): Promise<{ unbilledCount: number }> {
+    const allInvoices = await this.getInvoices(schoolId);
+    const targetInvoices = allInvoices.filter(
+      (inv) => inv.term === term && (!inv.academicYear || inv.academicYear === academicYear)
+    );
+
+    if (targetInvoices.length === 0) {
+      return { unbilledCount: 0 };
+    }
+
+    let unbilledCount = 0;
+    const students = await studentService.getStudents(schoolId);
+    const studentMap = new Map(students.map((s) => [s.id, { ...s }]));
+
+    const CHUNK_SIZE = 150;
+    for (let i = 0; i < targetInvoices.length; i += CHUNK_SIZE) {
+      const chunk = targetInvoices.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+
+      for (const inv of chunk) {
+        const invRef = doc(db, 'schools', schoolId, 'invoices', inv.id);
+        batch.delete(invRef);
+
+        const student = studentMap.get(inv.studentId);
+        if (student) {
+          const currentBal = student.totalBalance || 0;
+          const unbilledAmount = inv.balance !== undefined ? inv.balance : (inv.totalAmount - (inv.paidAmount || 0));
+          const newBal = Math.max(0, currentBal - unbilledAmount);
+          student.totalBalance = newBal;
+
+          const studentRef = doc(db, 'schools', schoolId, 'students', student.id);
+          batch.update(studentRef, {
+            totalBalance: newBal,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        unbilledCount++;
+      }
+
+      await batch.commit();
+    }
+
+    return { unbilledCount };
+  },
+
   async updateInvoice(
     schoolId: string,
     invoiceId: string,

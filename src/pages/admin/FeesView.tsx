@@ -731,9 +731,32 @@ export const FeesView: React.FC = () => {
             ))}
           </div>
         </div>
-        <span className="text-[11px] text-slate-500 font-medium">
-          Inspecting records for: <strong className="text-slate-900">{financeTermFilter === 'ALL' ? 'Entire Academic Year' : financeTermFilter}</strong>
-        </span>
+        <div className="flex items-center gap-2">
+          {financeTermFilter !== 'ALL' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-rose-700 border-rose-200 bg-rose-50 hover:bg-rose-100 font-bold shadow-xs"
+              onClick={async () => {
+                if (!window.confirm(`Are you sure you want to unbill all invoices for ${financeTermFilter}? This will remove all invoices for this term and deduct the billed amounts from student balances.`)) {
+                  return;
+                }
+                try {
+                  const res = await feeService.unbillTermInvoices(school!.id, financeTermFilter as any, '2026');
+                  await loadFinanceData();
+                  showToast(`Successfully unbilled ${res.unbilledCount} invoices for ${financeTermFilter}.`, 'success');
+                } catch (e: any) {
+                  showToast('Error unbilling term: ' + e.message, 'error');
+                }
+              }}
+            >
+              Unbill {financeTermFilter}
+            </Button>
+          )}
+          <span className="text-[11px] text-slate-500 font-medium">
+            Inspecting records for: <strong className="text-slate-900">{financeTermFilter === 'ALL' ? 'Entire Academic Year' : financeTermFilter}</strong>
+          </span>
+        </div>
       </div>
 
       {/* KPI Stats Cards */}
