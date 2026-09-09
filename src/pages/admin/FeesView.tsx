@@ -75,6 +75,7 @@ export const FeesView: React.FC = () => {
   const [search, setSearch] = useState<string>('');
   const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('ALL');
   const [selectedTermFilter, setSelectedTermFilter] = useState<string>('Term 1');
+  const [financeTermFilter, setFinanceTermFilter] = useState<string>('ALL');
 
   // Student Ledger & Balances Tab Filter States
   const [balanceSearch, setBalanceSearch] = useState<string>('');
@@ -549,10 +550,6 @@ export const FeesView: React.FC = () => {
     }
   };
 
-  const totalCollected = payments.reduce((s, p) => s + (p.amount || 0), 0);
-  const totalBilled = invoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
-  const totalOutstanding = Math.max(0, totalBilled - totalCollected);
-
   // Open Payment modal for specific student
   const handleOpenPayForStudent = (std: Student) => {
     setPayFormData({
@@ -597,6 +594,11 @@ export const FeesView: React.FC = () => {
   });
 
   const filteredPayments = payments.filter((p) => {
+    if (financeTermFilter !== 'ALL') {
+      const linkedInvoice = p.invoiceId ? invoices.find(i => i.id === p.invoiceId) : null;
+      const paymentTerm = p.term || linkedInvoice?.term;
+      if (paymentTerm && paymentTerm !== financeTermFilter) return false;
+    }
     const q = search.toLowerCase();
     return (
       !search ||
@@ -608,6 +610,7 @@ export const FeesView: React.FC = () => {
   });
 
   const filteredInvoices = invoices.filter((inv) => {
+    if (financeTermFilter !== 'ALL' && inv.term !== financeTermFilter) return false;
     const q = search.toLowerCase();
     return (
       !search ||
@@ -616,6 +619,12 @@ export const FeesView: React.FC = () => {
       inv.admissionNumber?.toLowerCase().includes(q)
     );
   });
+
+  const totalCollected = filteredPayments.reduce((s, p) => s + (p.amount || 0), 0);
+  const totalBilled = filteredInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0);
+  const totalOutstanding = financeTermFilter === 'ALL'
+    ? students.reduce((acc, s) => acc + Math.max(0, s.totalBalance || 0), 0)
+    : Math.max(0, totalBilled - totalCollected);
 
   return (
     <div className="space-y-6">
@@ -632,6 +641,23 @@ export const FeesView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-emerald-800 border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 font-bold shadow-xs"
+            icon={<RefreshCw className="w-4 h-4 text-emerald-700" />}
+            onClick={async () => {
+              try {
+                await feeService.reconcileAllBalances(school!.id);
+                await loadFinanceData();
+                showToast('All student fee ledgers reconciled successfully!', 'success');
+              } catch (e: any) {
+                showToast('Error reconciling ledgers: ' + e.message, 'error');
+              }
+            }}
+          >
+            Reconcile Ledgers
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -683,6 +709,31 @@ export const FeesView: React.FC = () => {
             Record Fee Payment
           </Button>
         </div>
+      </div>
+
+      {/* Financial Term Filter Selector Banner */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="font-bold text-slate-700 uppercase tracking-wider">Academic Term Filter:</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {['ALL', 'Term 1', 'Term 2', 'Term 3'].map((t) => (
+              <button
+                key={t}
+                onClick={() => setFinanceTermFilter(t)}
+                className={`px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                  financeTermFilter === t
+                    ? 'bg-blue-900 text-white shadow-xs'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {t === 'ALL' ? 'Whole Year (All Terms)' : t}
+              </button>
+            ))}
+          </div>
+        </div>
+        <span className="text-[11px] text-slate-500 font-medium">
+          Inspecting records for: <strong className="text-slate-900">{financeTermFilter === 'ALL' ? 'Entire Academic Year' : financeTermFilter}</strong>
+        </span>
       </div>
 
       {/* KPI Stats Cards */}

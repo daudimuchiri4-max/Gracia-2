@@ -904,4 +904,26 @@ export const feeService = {
     // 3. Delete the payment document
     await deleteDoc(docRef);
   },
+
+  async reconcileAllBalances(schoolId: string): Promise<void> {
+    const students = await studentService.getStudents(schoolId);
+    const invoices = await this.getInvoices(schoolId);
+    const payments = await this.getPayments(schoolId);
+
+    for (const student of students) {
+      const studentInvoices = invoices.filter((i) => i.studentId === student.id);
+      const studentPayments = payments.filter((p) => p.studentId === student.id);
+
+      const totalInvoiced = studentInvoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+      const totalPaid = studentPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const calculatedBalance = totalInvoiced > 0 || totalPaid > 0
+        ? Math.max(0, totalInvoiced - totalPaid)
+        : (student.totalBalance || 0);
+
+      await studentService.updateStudent(schoolId, student.id, {
+        totalBalance: calculatedBalance,
+      });
+    }
+  },
 };
