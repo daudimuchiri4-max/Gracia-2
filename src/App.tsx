@@ -376,7 +376,7 @@ const MainAppContent: React.FC = () => {
         if (activeRole !== 'SUPER_ADMIN') {
           return <Dashboard onNavigate={handleNavigate} />;
         }
-        return <SystemOwnerConsole />;
+        return <SystemOwnerConsole onNavigate={handleNavigate} />;
       case 'TEACHER_PORTAL':
         return <TeacherPortal />;
       case 'PARENT_PORTAL':

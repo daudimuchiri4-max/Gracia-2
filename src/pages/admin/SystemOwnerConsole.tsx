@@ -45,8 +45,8 @@ import {
   CalendarCheck,
 } from 'lucide-react';
 
-export const SystemOwnerConsole: React.FC = () => {
-  const { school } = useAuth();
+export const SystemOwnerConsole: React.FC<{ onNavigate?: (view: any) => void }> = ({ onNavigate }) => {
+  const { school, switchRole } = useAuth();
   const { showToast } = useToast();
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() =>
@@ -134,6 +134,10 @@ export const SystemOwnerConsole: React.FC = () => {
     subscriptionService.logoutSystemOwner();
     setIsAuthenticated(false);
     setPasskeyInput('');
+    switchRole('ADMIN');
+    if (onNavigate) {
+      onNavigate('DASHBOARD');
+    }
     showToast('Logged out of System Owner Console.', 'info');
   };
 

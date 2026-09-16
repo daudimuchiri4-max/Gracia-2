@@ -220,22 +220,12 @@ export const SubscriptionLockScreen: React.FC<SubscriptionLockScreenProps> = ({
               <label className="block font-bold text-slate-700">
                 Provider Master Key:
               </label>
-              <button
-                type="button"
-                onClick={() => {
-                  setOwnerKey('GLC-SYSTEM-OWNER-2026');
-                  setOwnerAuthError('');
-                }}
-                className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer underline"
-              >
-                Use Default Key
-              </button>
             </div>
             <input
               type="password"
               value={ownerKey}
               onChange={(e) => setOwnerKey(e.target.value)}
-              placeholder="e.g. GLC-SYSTEM-OWNER-2026"
+              placeholder="Enter master passkey"
               className="w-full px-3 py-2 border border-slate-200 rounded-xl font-mono text-sm"
               required
               autoFocus
