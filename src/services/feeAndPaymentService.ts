@@ -208,20 +208,21 @@ export const feeService = {
     try {
       const snap = await getDocs(collection(db, 'schools', schoolId, 'feeStructures'));
       const list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as FeeStructure));
-      // Sync local cache
-      try {
-        localStorage.setItem(`fee_structures_${schoolId}`, JSON.stringify(list));
-      } catch {}
-      return list;
-    } catch (err) {
-      console.error('Error fetching fee structures:', err);
-      const cached = localStorage.getItem(`fee_structures_${schoolId}`);
-      if (cached !== null) {
-        try {
-          return JSON.parse(cached) as FeeStructure[];
-        } catch {}
+      if (list.length > 0) {
+        return list;
       }
-      return [];
+      return DEFAULT_CBC_FEE_STRUCTURES.map((f) => ({
+        ...f,
+        schoolId,
+        createdAt: '2026-01-05T00:00:00.000Z',
+      } as FeeStructure));
+    } catch (err) {
+      console.warn('Notice fetching fee structures from Firestore, utilizing fallback:', err);
+      return DEFAULT_CBC_FEE_STRUCTURES.map((f) => ({
+        ...f,
+        schoolId,
+        createdAt: '2026-01-05T00:00:00.000Z',
+      } as FeeStructure));
     }
   },
 
@@ -234,10 +235,6 @@ export const feeService = {
     } catch (e) {
       console.warn('Error clearing fee structures from Firestore:', e);
     }
-    try {
-      localStorage.removeItem(`fee_structures_${schoolId}`);
-      localStorage.removeItem(`fee_structures_initialized_${schoolId}`);
-    } catch {}
   },
 
   async saveFeeStructure(
@@ -262,17 +259,6 @@ export const feeService = {
       console.warn('Error saving fee structure to Firestore:', e);
     }
 
-    // Update local cache
-    try {
-      const cached = localStorage.getItem(`fee_structures_${schoolId}`);
-      const list: FeeStructure[] = cached ? JSON.parse(cached) : [];
-      const updated = list.filter((f) => f.id !== docId).concat(feeStruct);
-      localStorage.setItem(`fee_structures_${schoolId}`, JSON.stringify(updated));
-      localStorage.setItem(`fee_structures_initialized_${schoolId}`, 'true');
-    } catch (e) {
-      console.warn('Local fee structure update failed:', e);
-    }
-
     return feeStruct;
   },
 
@@ -281,16 +267,6 @@ export const feeService = {
       await deleteDoc(doc(db, 'schools', schoolId, 'feeStructures', structureId));
     } catch (e) {
       console.warn('Error deleting fee structure from Firestore:', e);
-    }
-
-    try {
-      const cached = localStorage.getItem(`fee_structures_${schoolId}`);
-      const list: FeeStructure[] = cached ? JSON.parse(cached) : [];
-      const filtered = list.filter((f) => f.id !== structureId);
-      localStorage.setItem(`fee_structures_${schoolId}`, JSON.stringify(filtered));
-      localStorage.setItem(`fee_structures_initialized_${schoolId}`, 'true');
-    } catch (e) {
-      console.warn('Error updating local cache on delete:', e);
     }
   },
 

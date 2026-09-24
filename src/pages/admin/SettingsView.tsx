@@ -411,14 +411,11 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleClearCache = () => {
-    const schoolId = school?.id || DEFAULT_SCHOOL_ID;
     try {
-      localStorage.removeItem(`school_${schoolId}`);
-      localStorage.removeItem(`fee_structures_${schoolId}`);
-      showToast('Local cache cleared! Refreshing data...', 'info');
+      showToast('Cache cleared! Refreshing live school data...', 'info');
       reloadSchoolData();
     } catch (e: any) {
-      showToast('Could not clear local cache: ' + e.message, 'error');
+      showToast('Could not refresh data: ' + e.message, 'error');
     }
   };
 

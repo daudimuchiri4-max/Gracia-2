@@ -248,27 +248,12 @@ export const schoolService = {
       const docRef = doc(db, 'schools', schoolId);
       const snap = await getDoc(docRef);
       if (snap.exists()) {
-        const data = snap.data() as School;
-        try {
-          localStorage.setItem(`school_${schoolId}`, JSON.stringify(data));
-        } catch {
-          // ignore storage error
-        }
-        return data;
-      }
-      // Check local cache
-      const cached = localStorage.getItem(`school_${schoolId}`);
-      if (cached) {
-        return JSON.parse(cached) as School;
+        return snap.data() as School;
       }
       if (schoolId === DEFAULT_SCHOOL_ID) return DEFAULT_SCHOOL;
       return null;
     } catch (err) {
       console.error('Error fetching school from firestore:', err);
-      const cached = localStorage.getItem(`school_${schoolId}`);
-      if (cached) {
-        return JSON.parse(cached) as School;
-      }
       if (schoolId === DEFAULT_SCHOOL_ID) return DEFAULT_SCHOOL;
       return null;
     }
@@ -294,21 +279,12 @@ export const schoolService = {
     try {
       await setDoc(docRef, cleanedUpdates, { merge: true });
     } catch (err) {
-      console.warn('Firestore setDoc failed for school, updating local cache:', err);
+      console.warn('Firestore setDoc failed for school:', err);
     }
 
-    try {
-      const existing = localStorage.getItem(`school_${schoolId}`);
-      const prev = existing ? JSON.parse(existing) : DEFAULT_SCHOOL;
-      const merged = { ...prev, ...updates, updatedAt: new Date().toISOString() };
-      localStorage.setItem(`school_${schoolId}`, JSON.stringify(merged));
-      
-      // Dispatch live update event so AuthContext and all components update immediately
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('school_data_updated', { detail: merged }));
-      }
-    } catch (e) {
-      console.warn('Local storage update failed for school:', e);
+    // Dispatch live update event so AuthContext and all components update immediately
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('school_data_updated', { detail: updates }));
     }
   },
 

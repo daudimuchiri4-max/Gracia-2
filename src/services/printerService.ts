@@ -151,22 +151,12 @@ class PrinterService {
   }
 
   private loadConfig(): void {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        this.config = { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
-      }
-    } catch (e) {
-      console.warn('Could not load printer config from storage:', e);
-    }
+    // In-memory configuration initialized from DEFAULT_CONFIG
+    this.config = { ...DEFAULT_CONFIG };
   }
 
   private saveConfig(): void {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.config));
-    } catch (e) {
-      console.warn('Could not save printer config to storage:', e);
-    }
+    // In-memory configuration update
   }
 
   /**

@@ -319,53 +319,11 @@ export const operationsService = {
           typography: rawData.typography || DEFAULT_WEBSITE_CONTENT.typography,
         };
         const data = sanitizeContent(mergedData);
-        try {
-          localStorage.setItem(`website_cms_${sid}`, JSON.stringify(data));
-          localStorage.setItem(`website_cms_${DEFAULT_SCHOOL_ID}`, JSON.stringify(data));
-        } catch {
-          // ignore local quota issues
-        }
         return data;
-      }
-      // Check local cache if not found in Firestore
-      const cached = localStorage.getItem(`website_cms_${sid}`) || localStorage.getItem(`website_cms_${DEFAULT_SCHOOL_ID}`);
-      if (cached) {
-        const parsed = JSON.parse(cached) as WebsiteContent;
-        const mergedCached: WebsiteContent = {
-          ...DEFAULT_WEBSITE_CONTENT,
-          ...parsed,
-          stats: {
-            ...DEFAULT_WEBSITE_CONTENT.stats,
-            ...(parsed.stats || {}),
-          },
-          heroSlides: parsed.heroSlides && parsed.heroSlides.length > 0 ? parsed.heroSlides : DEFAULT_WEBSITE_CONTENT.heroSlides,
-          facilities: parsed.facilities && parsed.facilities.length > 0 ? parsed.facilities : DEFAULT_WEBSITE_CONTENT.facilities,
-          faqs: parsed.faqs && parsed.faqs.length > 0 ? parsed.faqs : DEFAULT_WEBSITE_CONTENT.faqs,
-          typography: parsed.typography || DEFAULT_WEBSITE_CONTENT.typography,
-        };
-        return sanitizeContent(mergedCached);
       }
       return { ...DEFAULT_WEBSITE_CONTENT, schoolId: sid };
     } catch (err) {
       console.error('Error fetching website content from firestore:', err);
-      const cached = localStorage.getItem(`website_cms_${sid}`) || localStorage.getItem(`website_cms_${DEFAULT_SCHOOL_ID}`);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          const sanitized = {
-            ...parsed,
-            faqs: (parsed.faqs || []).map((f: any) => ({
-              ...f,
-              answer: f.answer
-                ? f.answer.replace(/Kileleshwa|Lavington|Ngong Road|Karen|South C|Westlands/gi, '').trim()
-                : '',
-            })),
-          };
-          return sanitized as WebsiteContent;
-        } catch {
-          // fallback
-        }
-      }
       return { ...DEFAULT_WEBSITE_CONTENT, schoolId: sid };
     }
   },
@@ -383,19 +341,7 @@ export const operationsService = {
       await setDoc(docRef, cleanedUpdates, { merge: true });
       console.log('Firestore websiteCMS document saved successfully for school:', sid);
     } catch (err) {
-      console.warn('Firestore setDoc failed for websiteCMS, saving to local cache:', err);
-    }
-
-    try {
-      const existing = localStorage.getItem(`website_cms_${sid}`) || localStorage.getItem(`website_cms_${DEFAULT_SCHOOL_ID}`);
-      const prev = existing ? JSON.parse(existing) : DEFAULT_WEBSITE_CONTENT;
-      const merged = { ...prev, ...cleanedUpdates };
-      localStorage.setItem(`website_cms_${sid}`, JSON.stringify(merged));
-      if (sid !== DEFAULT_SCHOOL_ID) {
-        localStorage.setItem(`website_cms_${DEFAULT_SCHOOL_ID}`, JSON.stringify(merged));
-      }
-    } catch (e) {
-      console.warn('Local storage cache update failed for website CMS:', e);
+      console.warn('Firestore setDoc failed for websiteCMS:', err);
     }
 
     // Broadcast live event across browser/app components

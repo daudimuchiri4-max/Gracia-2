@@ -77,24 +77,21 @@ export const DEFAULT_SUBSCRIPTION_INVOICES: SubscriptionInvoice[] = [
   },
 ];
 
+let inMemoryMasterPasskey: string | null = null;
+
 export const subscriptionService = {
   /**
-   * Get the current Master Passkey synchronously from cache or fallback
+   * Get the current Master Passkey synchronously from in-memory cache or fallback
    */
   getMasterPasskeySync(): string {
-    try {
-      const custom = localStorage.getItem(SYSTEM_OWNER_MASTER_KEY_STORAGE);
-      if (custom && custom.trim().length >= 4) {
-        return custom.trim();
-      }
-    } catch {
-      // Ignore localStorage read errors
+    if (inMemoryMasterPasskey && inMemoryMasterPasskey.trim().length >= 4) {
+      return inMemoryMasterPasskey.trim();
     }
     return DEFAULT_SYSTEM_OWNER_MASTER_KEY;
   },
 
   /**
-   * Fetch current Master Passkey from Firestore or local cache
+   * Fetch current Master Passkey from Firestore
    */
   async getMasterPasskey(schoolId: string = DEFAULT_SCHOOL_ID): Promise<string> {
     try {
@@ -102,9 +99,7 @@ export const subscriptionService = {
       const snap = await getDoc(docRef);
       if (snap.exists() && snap.data()?.masterPasskey) {
         const key = snap.data().masterPasskey;
-        try {
-          localStorage.setItem(SYSTEM_OWNER_MASTER_KEY_STORAGE, key);
-        } catch {}
+        inMemoryMasterPasskey = key;
         return key;
       }
     } catch (e) {
@@ -182,12 +177,8 @@ export const subscriptionService = {
       console.warn('Could not save master passkey to firestore:', e);
     }
 
-    // Persist to localStorage
-    try {
-      localStorage.setItem(SYSTEM_OWNER_MASTER_KEY_STORAGE, trimmedNew);
-    } catch (e) {
-      console.warn('Could not save master passkey locally:', e);
-    }
+    // Cache in-memory
+    inMemoryMasterPasskey = trimmedNew;
 
     return {
       success: true,
@@ -219,12 +210,7 @@ export const subscriptionService = {
       console.warn('Could not save restored master passkey to firestore:', e);
     }
 
-    // Reset in localStorage
-    try {
-      localStorage.setItem(SYSTEM_OWNER_MASTER_KEY_STORAGE, defaultKey);
-    } catch (e) {
-      console.warn('Could not reset master passkey locally:', e);
-    }
+    inMemoryMasterPasskey = defaultKey;
 
     return {
       success: true,
@@ -259,11 +245,7 @@ export const subscriptionService = {
       console.warn('Could not save direct master passkey to firestore:', e);
     }
 
-    try {
-      localStorage.setItem(SYSTEM_OWNER_MASTER_KEY_STORAGE, trimmed);
-    } catch (e) {
-      console.warn('Could not save master passkey locally:', e);
-    }
+    inMemoryMasterPasskey = trimmed;
 
     return {
       success: true,
@@ -294,12 +276,8 @@ export const subscriptionService = {
         const data = snap.data() as SchoolSubscriptionConfig;
         return data;
       }
-      const local = localStorage.getItem(`saas_subscription_${schoolId}`);
-      if (local) return JSON.parse(local);
       return DEFAULT_SUBSCRIPTION_CONFIG;
     } catch {
-      const local = localStorage.getItem(`saas_subscription_${schoolId}`);
-      if (local) return JSON.parse(local);
       return DEFAULT_SUBSCRIPTION_CONFIG;
     }
   },
@@ -323,11 +301,6 @@ export const subscriptionService = {
     } catch (e) {
       console.warn('Could not save subscription to firestore:', e);
     }
-    try {
-      localStorage.setItem(`saas_subscription_${schoolId}`, JSON.stringify(config));
-    } catch (e) {
-      console.warn('Could not cache subscription locally:', e);
-    }
 
     return { success: true };
   },
@@ -347,12 +320,8 @@ export const subscriptionService = {
       if (!snap.empty) {
         return snap.docs.map((d) => ({ id: d.id, ...d.data() } as SubscriptionInvoice));
       }
-      const local = localStorage.getItem(`saas_invoices_${schoolId}`);
-      if (local) return JSON.parse(local);
       return DEFAULT_SUBSCRIPTION_INVOICES;
     } catch {
-      const local = localStorage.getItem(`saas_invoices_${schoolId}`);
-      if (local) return JSON.parse(local);
       return DEFAULT_SUBSCRIPTION_INVOICES;
     }
   },
@@ -370,14 +339,6 @@ export const subscriptionService = {
       await setDoc(docRef, cleanForFirestore(invoice));
     } catch (e) {
       console.warn('Firestore invoice save error:', e);
-    }
-    try {
-      const current = await this.getInvoices(schoolId);
-      const filtered = current.filter((i) => i.id !== invoice.id);
-      const updated = [invoice, ...filtered];
-      localStorage.setItem(`saas_invoices_${schoolId}`, JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Local invoice save error:', e);
     }
   },
 

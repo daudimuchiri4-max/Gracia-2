@@ -27,37 +27,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    try {
-      const saved = localStorage.getItem('glc_user');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
+  const [user, setUser] = useState<UserProfile | null>({
+    id: 'demo-admin-id',
+    email: 'admin@gracia.ac.ke',
+    fullName: 'Dr. Grace Wanjiku (Administrator)',
+    role: 'SCHOOL_ADMIN',
+    schoolId: DEFAULT_SCHOOL_ID,
+    status: 'ACTIVE',
+    createdAt: new Date().toISOString(),
   });
   const [school, setSchool] = useState<School | null>(DEFAULT_SCHOOL);
-  const [activeRole, setActiveRole] = useState<UserRole>(() => {
-    try {
-      const saved = localStorage.getItem('glc_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.role) return parsed.role;
-      }
-    } catch {}
-    return 'SCHOOL_ADMIN';
-  });
+  const [activeRole, setActiveRole] = useState<UserRole>('SCHOOL_ADMIN');
   const [loading, setLoading] = useState<boolean>(true);
 
   const updateAndPersistUser = (profile: UserProfile | null) => {
     setUser(profile);
     if (profile) {
       setActiveRole(profile.role);
-      try {
-        localStorage.setItem('glc_user', JSON.stringify(profile));
-      } catch {}
-    } else {
-      try {
-        localStorage.removeItem('glc_user');
-      } catch {}
     }
   };
 
@@ -87,21 +73,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else {
         // Sign in anonymously in background so Firestore rules with authentication pass seamlessly
         authService.loginAnonymously().catch(() => {});
-
-        // If no user is currently saved in localStorage, provide default admin profile
-        const existingLocalUser = localStorage.getItem('glc_user');
-        if (!existingLocalUser && mounted) {
-          const defaultAdminProfile: UserProfile = {
-            id: 'demo-admin-id',
-            email: 'admin@gracia.ac.ke',
-            fullName: 'Dr. Grace Wanjiku (Administrator)',
-            role: 'SCHOOL_ADMIN',
-            schoolId: DEFAULT_SCHOOL_ID,
-            status: 'ACTIVE',
-            createdAt: new Date().toISOString(),
-          };
-          updateAndPersistUser(defaultAdminProfile);
-        }
       }
       if (mounted) setLoading(false);
     });

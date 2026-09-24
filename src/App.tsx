@@ -169,17 +169,6 @@ const normalizeView = (v: string): ActiveView => {
 const getInitialView = (): ActiveView => {
   if (typeof window === 'undefined') return 'PUBLIC';
 
-  // 0. Check saved user role first for strict portal routing
-  try {
-    const savedUser = localStorage.getItem('glc_user');
-    if (savedUser) {
-      const userObj = JSON.parse(savedUser);
-      if (userObj.role === 'TEACHER') return 'TEACHER_PORTAL';
-      if (userObj.role === 'PARENT') return 'PARENT_PORTAL';
-      if (userObj.role === 'STUDENT') return 'STUDENT_PORTAL';
-    }
-  } catch {}
-
   // 1. Check URL query params ?view=... or ?page=...
   try {
     const searchParams = new URLSearchParams(window.location.search);
@@ -205,19 +194,6 @@ const getInitialView = (): ActiveView => {
     }
   } catch {}
 
-  // 4. Check Stored LocalStorage session view
-  try {
-    const savedUser = localStorage.getItem('glc_user');
-    const savedView = localStorage.getItem('glc_active_view');
-    if (savedUser && savedView && savedView !== 'PUBLIC') {
-      const userObj = JSON.parse(savedUser);
-      if (userObj.role === 'TEACHER') return 'TEACHER_PORTAL';
-      if (userObj.role === 'PARENT') return 'PARENT_PORTAL';
-      if (userObj.role === 'STUDENT') return 'STUDENT_PORTAL';
-      return normalizeView(savedView);
-    }
-  } catch {}
-
   return 'PUBLIC';
 };
 
@@ -240,13 +216,6 @@ const MainAppContent: React.FC = () => {
       window.removeEventListener('hashchange', handlePopState);
     };
   }, []);
-
-  // Save active view to localStorage whenever it changes
-  React.useEffect(() => {
-    try {
-      localStorage.setItem('glc_active_view', activeView);
-    } catch {}
-  }, [activeView]);
 
   React.useEffect(() => {
     if (activeRole === 'TEACHER' && activeView !== 'PUBLIC' && activeView !== 'TEACHER_PORTAL') {
@@ -292,7 +261,6 @@ const MainAppContent: React.FC = () => {
 
     setActiveView(normalized);
     try {
-      localStorage.setItem('glc_active_view', normalized);
       const slug = normalized.toLowerCase().replace(/_/g, '-');
       if (slug === 'public') {
         window.history.pushState({ view: normalized }, '', '/');

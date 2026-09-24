@@ -75,8 +75,6 @@ export const darajaService = {
       if (snap.exists()) {
         return snap.data() as DarajaConfig;
       }
-      const cached = localStorage.getItem(`daraja_config_${schoolId}`);
-      if (cached) return JSON.parse(cached);
       return DEFAULT_DARAJA_CONFIG;
     } catch {
       return DEFAULT_DARAJA_CONFIG;
@@ -88,12 +86,7 @@ export const darajaService = {
       const docRef = doc(db, 'schools', schoolId, 'darajaConfig', 'main');
       await setDoc(docRef, cleanForFirestore(config));
     } catch (e) {
-      console.warn('Could not save daraja config to firestore, updating local:', e);
-    }
-    try {
-      localStorage.setItem(`daraja_config_${schoolId}`, JSON.stringify(config));
-    } catch (e) {
-      console.warn('Could not cache daraja config locally:', e);
+      console.warn('Could not save daraja config to firestore:', e);
     }
   },
 

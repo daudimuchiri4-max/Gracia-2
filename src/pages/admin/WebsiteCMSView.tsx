@@ -242,7 +242,7 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
         updatedAt: new Date().toISOString(),
       };
 
-      // 1. Update CMS collection in Firestore and localStorage
+      // 1. Update CMS collection in Firestore
       await operationsService.updateWebsiteContent(sid, updatedContent);
 
       // 2. Also update school logo in main school document

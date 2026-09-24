@@ -1,0 +1,572 @@
+{
+  "entities": {
+    "School": {
+      "title": "School",
+      "description": "Educational institution profile, academic year, grading configurations, and branding",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "code": { "type": "string", "maxLength": 50 },
+        "motto": { "type": "string", "maxLength": 300 },
+        "address": { "type": "string", "maxLength": 500 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 120 },
+        "currency": { "type": "string", "maxLength": 10 },
+        "currencySymbol": { "type": "string", "maxLength": 10 },
+        "academicYear": { "type": "string", "maxLength": 20 },
+        "currentTerm": { "type": "string", "enum": ["Term 1", "Term 2", "Term 3"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "TRIAL"] }
+      },
+      "required": ["id", "name", "code", "currentTerm", "status"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role, school affiliation, and status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 120 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "role": {
+          "type": "string",
+          "enum": [
+            "SUPER_ADMIN",
+            "SCHOOL_ADMIN",
+            "HEADTEACHER",
+            "DEPUTY_HEADTEACHER",
+            "TEACHER",
+            "ACCOUNTANT",
+            "CASHIER",
+            "LIBRARIAN",
+            "TRANSPORT_MANAGER",
+            "NURSE",
+            "PARENT",
+            "STUDENT",
+            "STOREKEEPER",
+            "RECEPTIONIST"
+          ]
+        },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "SUSPENDED"] }
+      },
+      "required": ["id", "email", "fullName", "role", "schoolId", "status"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Learner record including admission number, grade level, stream, and fee balance",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "admissionNumber": { "type": "string", "maxLength": 50 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "gender": { "type": "string", "enum": ["MALE", "FEMALE"] },
+        "currentClass": { "type": "string", "maxLength": 50 },
+        "stream": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "TRANSFERRED", "GRADUATED", "SUSPENDED"] }
+      },
+      "required": ["id", "schoolId", "admissionNumber", "fullName", "gender", "currentClass", "status"]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Staff member profile, designation, role, and department",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "staffId": { "type": "string", "maxLength": 50 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "designation": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["ACTIVE", "ON_LEAVE", "RESIGNED", "TERMINATED", "SUSPENDED"] }
+      },
+      "required": ["id", "schoolId", "staffId", "fullName", "designation", "status"]
+    },
+    "Parent": {
+      "title": "Parent",
+      "description": "Parent or guardian details and associated student IDs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "fullName", "phone"]
+    },
+    "ClassRoom": {
+      "title": "ClassRoom",
+      "description": "Academic class definition and stream divisions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "level": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "name", "level"]
+    },
+    "Subject": {
+      "title": "Subject",
+      "description": "Curriculum learning area or subject",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 50 },
+        "name": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "code", "name"]
+    },
+    "FeeStructure": {
+      "title": "FeeStructure",
+      "description": "Termly fee breakdown and votehead amounts per grade",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 150 },
+        "academicYear": { "type": "string", "maxLength": 20 },
+        "term": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["id", "schoolId", "title", "academicYear", "term"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Student fee invoice and payment balance ledger",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "invoiceNumber": { "type": "string", "maxLength": 50 },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "balance": { "type": "number" },
+        "status": { "type": "string", "enum": ["PAID", "PARTIAL", "UNPAID", "OVERDUE", "CANCELLED"] }
+      },
+      "required": ["id", "schoolId", "studentId", "invoiceNumber", "totalAmount", "status"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Fee receipt transaction with M-PESA, bank, or cash reference",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string", "maxLength": 50 },
+        "referenceNumber": { "type": "string", "maxLength": 100 },
+        "receiptNumber": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "studentId", "amount", "paymentMethod", "referenceNumber"]
+    },
+    "Assessment": {
+      "title": "Assessment",
+      "description": "CBC assessment or examination definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 150 },
+        "term": { "type": "string", "maxLength": 20 },
+        "academicYear": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["id", "schoolId", "title", "term", "academicYear"]
+    },
+    "AssessmentResult": {
+      "title": "AssessmentResult",
+      "description": "CBC score or competency rubric rating for a student in a subject",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "subjectId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "schoolId", "studentId", "subjectId"]
+    },
+    "ReportCard": {
+      "title": "ReportCard",
+      "description": "Compiled term report card for a learner",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "term": { "type": "string", "maxLength": 20 },
+        "academicYear": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["id", "schoolId", "studentId", "term", "academicYear"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Class daily morning and afternoon roll call record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 30 },
+        "classLevel": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "date", "classLevel"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "School canteen or uniform store inventory product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 },
+        "price": { "type": "number" },
+        "stock": { "type": "number" }
+      },
+      "required": ["id", "schoolId", "name", "price"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "POS checkout transaction receipt",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "receiptNumber": { "type": "string", "maxLength": 50 },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "receiptNumber", "totalAmount"]
+    },
+    "LibraryBook": {
+      "title": "LibraryBook",
+      "description": "School library accession catalog book record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "author": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "schoolId", "title", "author"]
+    },
+    "LibraryLoan": {
+      "title": "LibraryLoan",
+      "description": "Library book borrowing checkout status and due date",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "bookId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["ACTIVE", "RETURNED", "OVERDUE", "LOST"] }
+      },
+      "required": ["id", "schoolId", "bookId", "studentId", "status"]
+    },
+    "Timetable": {
+      "title": "Timetable",
+      "description": "Weekly classroom schedule and period assignment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "day": { "type": "string", "maxLength": 20 },
+        "subjectId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "schoolId", "day"]
+    },
+    "Route": {
+      "title": "Route",
+      "description": "School bus transport route with bus stops and charges",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "schoolId", "name"]
+    },
+    "HealthRecord": {
+      "title": "HealthRecord",
+      "description": "School clinic medical checkup and incident record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "schoolId", "studentId"]
+    },
+    "DisciplineIncident": {
+      "title": "DisciplineIncident",
+      "description": "Student discipline report and disciplinary action taken",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "schoolId", "studentId"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "School broadcast notice for parents, teachers, and staff",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["id", "schoolId", "title"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "School calendar event and academic milestone",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "schoolId", "title", "date"]
+    },
+    "AdmissionApplication": {
+      "title": "AdmissionApplication",
+      "description": "Online student admission application submitted by parent or guardian",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "studentFullName": { "type": "string", "maxLength": 150 },
+        "parentFullName": { "type": "string", "maxLength": 150 },
+        "parentPhone": { "type": "string", "maxLength": 50 },
+        "parentEmail": { "type": "string", "maxLength": 120 },
+        "appliedClass": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED", "ENROLLED"] }
+      },
+      "required": ["id", "studentFullName", "parentFullName", "parentPhone", "status"]
+    },
+    "WebsiteCMS": {
+      "title": "WebsiteCMS",
+      "description": "Public website CMS typography, hero banners, and content",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id"]
+    },
+    "DarajaConfig": {
+      "title": "DarajaConfig",
+      "description": "M-PESA Daraja integration credentials and paybill settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "shortcode": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id"]
+    },
+    "DarajaTransaction": {
+      "title": "DarajaTransaction",
+      "description": "M-PESA Express STK push or C2B IPN payment transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "mpesaReceiptNumber": { "type": "string", "maxLength": 50 },
+        "amount": { "type": "number" },
+        "phoneNumber": { "type": "string", "maxLength": 30 },
+        "status": { "type": "string", "maxLength": 30 }
+      },
+      "required": ["id", "schoolId", "amount", "phoneNumber", "status"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "System owner SaaS subscription status, lock screen state, and passkey hash",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["ACTIVE", "GRACE_PERIOD", "LOCKED", "SUSPENDED"] }
+      },
+      "required": ["id", "status"]
+    },
+    "SubscriptionInvoice": {
+      "title": "SubscriptionInvoice",
+      "description": "SaaS provider billing invoices for the school license",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "invoiceNumber": { "type": "string", "maxLength": 50 },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["PAID", "UNPAID", "OVERDUE"] }
+      },
+      "required": ["id", "invoiceNumber", "amount", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System event audit log entry for actions, security events, and user logins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 100 },
+        "userName": { "type": "string", "maxLength": 150 },
+        "userRole": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "action", "timestamp"]
+    },
+    "CustomRole": {
+      "title": "CustomRole",
+      "description": "Configurable system role with permission flag set",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "schoolId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "schoolId", "name"]
+    }
+  },
+  "firestore": {
+    "/schools/{schoolId}": {
+      "schema": "School",
+      "description": "School profiles, academic configurations, and branding settings"
+    },
+    "/schools/{schoolId}/students/{studentId}": {
+      "schema": "Student",
+      "description": "Student admission records, class assignments, and balances"
+    },
+    "/schools/{schoolId}/staff/{staffId}": {
+      "schema": "Staff",
+      "description": "Teacher and support staff profiles and qualifications"
+    },
+    "/schools/{schoolId}/parents/{parentId}": {
+      "schema": "Parent",
+      "description": "Parent and guardian contact records"
+    },
+    "/schools/{schoolId}/classes/{classId}": {
+      "schema": "ClassRoom",
+      "description": "Class levels and stream subdivisions"
+    },
+    "/schools/{schoolId}/subjects/{subjectId}": {
+      "schema": "Subject",
+      "description": "Academic subjects and CBC learning areas"
+    },
+    "/schools/{schoolId}/feeStructures/{structureId}": {
+      "schema": "FeeStructure",
+      "description": "Termly fee structures per class level"
+    },
+    "/schools/{schoolId}/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Student term fee invoices"
+    },
+    "/schools/{schoolId}/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Fee payment transaction receipts"
+    },
+    "/schools/{schoolId}/assessments/{assessmentId}": {
+      "schema": "Assessment",
+      "description": "Examinations and CBC assessment tasks"
+    },
+    "/schools/{schoolId}/results/{resultId}": {
+      "schema": "AssessmentResult",
+      "description": "Student subject assessment rubrics and marks"
+    },
+    "/schools/{schoolId}/reportCards/{reportCardId}": {
+      "schema": "ReportCard",
+      "description": "Consolidated student termly report cards"
+    },
+    "/schools/{schoolId}/attendance/{attendanceId}": {
+      "schema": "AttendanceRecord",
+      "description": "Daily student class attendance records"
+    },
+    "/schools/{schoolId}/products/{productId}": {
+      "schema": "Product",
+      "description": "School store and canteen inventory items"
+    },
+    "/schools/{schoolId}/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "POS checkout sales receipts"
+    },
+    "/schools/{schoolId}/libraryBooks/{bookId}": {
+      "schema": "LibraryBook",
+      "description": "Library book catalog accession records"
+    },
+    "/schools/{schoolId}/libraryLoans/{loanId}": {
+      "schema": "LibraryLoan",
+      "description": "Library book borrowing checkout status"
+    },
+    "/schools/{schoolId}/timetables/{timetableId}": {
+      "schema": "Timetable",
+      "description": "Class schedule timetable slots"
+    },
+    "/schools/{schoolId}/routes/{routeId}": {
+      "schema": "Route",
+      "description": "School bus transport routes and stages"
+    },
+    "/schools/{schoolId}/healthRecords/{recordId}": {
+      "schema": "HealthRecord",
+      "description": "Clinic health visit records"
+    },
+    "/schools/{schoolId}/disciplineIncidents/{incidentId}": {
+      "schema": "DisciplineIncident",
+      "description": "Discipline incident logs"
+    },
+    "/schools/{schoolId}/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "School announcements and notices"
+    },
+    "/schools/{schoolId}/events/{eventId}": {
+      "schema": "Event",
+      "description": "School calendar events"
+    },
+    "/schools/{schoolId}/admissionApplications/{appId}": {
+      "schema": "AdmissionApplication",
+      "description": "Prospective learner admission applications"
+    },
+    "/schools/{schoolId}/websiteCMS/{cmsDocId}": {
+      "schema": "WebsiteCMS",
+      "description": "Public website CMS content configuration"
+    },
+    "/schools/{schoolId}/darajaConfig/{configDocId}": {
+      "schema": "DarajaConfig",
+      "description": "M-PESA Daraja API configuration"
+    },
+    "/schools/{schoolId}/darajaTransactions/{transactionId}": {
+      "schema": "DarajaTransaction",
+      "description": "M-PESA transaction records"
+    },
+    "/schools/{schoolId}/subscription/{docId}": {
+      "schema": "Subscription",
+      "description": "SaaS license subscription status and security configuration"
+    },
+    "/schools/{schoolId}/subscriptionInvoices/{invoiceId}": {
+      "schema": "SubscriptionInvoice",
+      "description": "SaaS billing invoices"
+    },
+    "/schools/{schoolId}/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System activity audit trail entries"
+    },
+    "/schools/{schoolId}/roles/{roleId}": {
+      "schema": "CustomRole",
+      "description": "Custom user roles and permissions"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Registered user accounts and profiles"
+    },
+    "/admissionApplications/{appId}": {
+      "schema": "AdmissionApplication",
+      "description": "Global admission applications fallback path"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Global system audit logs fallback path"
+    }
+  }
+}

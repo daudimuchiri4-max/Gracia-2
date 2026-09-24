@@ -2,44 +2,260 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions
+    // ==========================================
+    // GLOBAL SECURITY HELPERS & CONSTRAINTS
+    // ==========================================
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'daudimuchiri4@gmail.com' ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*superadmin.*'))
+      );
     }
 
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function incoming() {
+      return request.resource.data;
     }
 
-    // Public website & ERP collections for schools (including students, invoices, payments, classes, teachers, etc.)
-    match /schools/{schoolId} {
-      allow read, write: if true;
-
-      // Sub-collections under school
-      match /{subcollection}/{docId} {
-        allow read, write: if true;
-      }
+    // Default Deny Catch-all rule for any undefined paths
+    match /{document=**} {
+      allow read, write: if false;
     }
 
-    // Global user profiles
+    // ==========================================
+    // USER PROFILES
+    // ==========================================
     match /users/{userId} {
-      allow read, create, update: if true;
-      allow delete: if isAuthenticated();
+      allow list: if true;
+      allow get: if isValidId(userId);
+      allow create, update: if isValidId(userId);
+      allow delete: if isSuperAdmin();
     }
 
-    // Public admission applications submitted online
+    // ==========================================
+    // PUBLIC FALLBACK ADMISSION APPLICATIONS
+    // ==========================================
     match /admissionApplications/{appId} {
-      allow create, read, update, delete: if true;
+      allow list: if true;
+      allow get, update: if isValidId(appId);
+      allow create: if isValidId(appId) && incoming().studentFullName is string && incoming().studentFullName.size() <= 150;
+      allow delete: if isSuperAdmin();
     }
 
-    // System-wide audit logs
+    // ==========================================
+    // GLOBAL AUDIT LOGS
+    // ==========================================
     match /auditLogs/{logId} {
-      allow read, create, update: if true;
-      allow delete: if isAuthenticated();
+      allow list: if true;
+      allow get, create: if isValidId(logId);
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // ==========================================
+    // SCHOOL DATA & SUB-COLLECTIONS
+    // ==========================================
+    match /schools/{schoolId} {
+      allow list: if true;
+      allow get: if isValidId(schoolId);
+      allow create, update: if isValidId(schoolId);
+      allow delete: if isSuperAdmin();
+
+      // 1. Fee Structures (fixes list & get permission error)
+      match /feeStructures/{structureId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(structureId);
+      }
+
+      // 2. Students Records
+      match /students/{studentId} {
+        allow list: if isValidId(schoolId);
+        allow get: if isValidId(schoolId) && isValidId(studentId);
+        allow create: if isValidId(schoolId) && isValidId(studentId) &&
+          incoming().admissionNumber is string && incoming().fullName is string;
+        allow update, delete: if isValidId(schoolId) && isValidId(studentId);
+      }
+
+      // 3. Staff & Teachers
+      match /staff/{staffId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(staffId);
+      }
+
+      // 4. Parents & Guardians
+      match /parents/{parentId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(parentId);
+      }
+
+      // 5. Classrooms & Streams
+      match /classes/{classId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(classId);
+      }
+
+      // 6. Academic Subjects & CBC Strands
+      match /subjects/{subjectId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(subjectId);
+      }
+
+      // 7. Invoices
+      match /invoices/{invoiceId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(invoiceId);
+      }
+
+      // 8. Fee Payments & Receipts
+      match /payments/{paymentId} {
+        allow list: if isValidId(schoolId);
+        allow get: if isValidId(schoolId) && isValidId(paymentId);
+        allow create, update: if isValidId(schoolId) && isValidId(paymentId) &&
+          incoming().amount is number && incoming().amount >= 0;
+        allow delete: if isValidId(schoolId) && isValidId(paymentId);
+      }
+
+      // 9. CBC Assessments & Exams
+      match /assessments/{assessmentId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(assessmentId);
+      }
+
+      // 10. CBC Assessment Results & Scores
+      match /results/{resultId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(resultId);
+      }
+
+      // 11. Student Report Cards
+      match /reportCards/{reportCardId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(reportCardId);
+      }
+
+      // 12. Daily Attendance Roll Call
+      match /attendance/{attendanceId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(attendanceId);
+      }
+
+      // 13. POS Store & Canteen Products
+      match /products/{productId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(productId);
+      }
+
+      // 14. POS Sales Receipts
+      match /sales/{saleId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(saleId);
+      }
+
+      // 15. Library Books Catalog
+      match /libraryBooks/{bookId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(bookId);
+      }
+
+      // 16. Library Loans
+      match /libraryLoans/{loanId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(loanId);
+      }
+
+      // 17. Class Timetables
+      match /timetables/{timetableId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(timetableId);
+      }
+
+      // 18. Transport Bus Routes
+      match /routes/{routeId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(routeId);
+      }
+
+      // 19. Clinic & Health Records
+      match /healthRecords/{recordId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(recordId);
+      }
+
+      // 20. Student Discipline Incidents
+      match /disciplineIncidents/{incidentId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(incidentId);
+      }
+
+      // 21. Custom Roles & Permissions (RBAC)
+      match /roles/{roleId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(roleId);
+      }
+
+      // 22. Website CMS
+      match /websiteCMS/{cmsDocId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(cmsDocId);
+      }
+
+      // 23. Announcements & Notices
+      match /announcements/{announcementId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(announcementId);
+      }
+
+      // 24. School Calendar Events
+      match /events/{eventId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(eventId);
+      }
+
+      // 25. Admission Applications
+      match /admissionApplications/{appId} {
+        allow list: if isValidId(schoolId);
+        allow get, update, delete: if isValidId(schoolId) && isValidId(appId);
+        allow create: if isValidId(schoolId) && isValidId(appId) &&
+          incoming().studentFullName is string && incoming().studentFullName.size() <= 150;
+      }
+
+      // 26. Audit Logs: Tamper-proof - updates and deletes locked
+      match /auditLogs/{logId} {
+        allow list: if isValidId(schoolId);
+        allow get, create: if isValidId(schoolId) && isValidId(logId);
+        allow update, delete: if isSuperAdmin();
+      }
+
+      // 27. SaaS Subscription & Lock Screen
+      match /subscription/{docId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(docId);
+      }
+
+      // 28. SaaS Subscription Invoices
+      match /subscriptionInvoices/{invId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(invId);
+      }
+
+      // 29. M-PESA Daraja Configuration
+      match /darajaConfig/{configDocId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(configDocId);
+      }
+
+      // 30. M-PESA Daraja IPN / STK Transactions
+      match /darajaTransactions/{txId} {
+        allow list: if isValidId(schoolId);
+        allow get, create, update, delete: if isValidId(schoolId) && isValidId(txId);
+      }
     }
   }
 }
