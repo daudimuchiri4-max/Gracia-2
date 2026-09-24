@@ -617,7 +617,7 @@ class PrinterService {
               ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:9px; color:#000;">QR</span>`}
             </div>
             <div class="info-list" style="margin-top: 4px;">
-              <div><strong>Gender:</strong> ${student.gender || 'N/A'} | <strong>Blood:</strong> ${student.bloodGroup || 'O+'}</div>
+              <div><strong>Gender:</strong> ${student.gender || 'N/A'}</div>
               <div><strong>Emergency:</strong> ${student.parentPhone || student.emergencyPhone || school?.phone || '+254 722 000 000'}</div>
             </div>
           </div>
@@ -1453,7 +1453,7 @@ class PrinterService {
                 ${qrCodeDataUrl ? `<img src="${qrCodeDataUrl}" alt="QR" />` : `<span style="font-size:9px; color:#000;">QR</span>`}
               </div>
               <div class="info-list" style="margin-top: 4px;">
-                <div><strong>Gender:</strong> ${student.gender || 'N/A'} | <strong>Blood:</strong> ${student.bloodGroup || 'O+'}</div>
+                <div><strong>Gender:</strong> ${student.gender || 'N/A'}</div>
                 <div><strong>Emergency:</strong> ${student.parentPhone || student.emergencyPhone || school?.phone || '+254 722 000 000'}</div>
               </div>
             </div>

@@ -739,11 +739,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-              <div>
-                <span className="text-slate-400 font-semibold block">Blood Group:</span>
-                <span className="text-sm font-bold text-slate-900">{student.bloodGroup || 'O+'}</span>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <div>
                 <span className="text-slate-400 font-semibold block">Special Education Needs:</span>
                 <span className="font-bold text-slate-900">{student.specialNeeds || 'None'}</span>
@@ -849,11 +845,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                   <div className="flex gap-4">
                     <div>
                       <span className="text-blue-300 block text-[9px] uppercase">Class</span>
-                      <strong>{student.currentClass}</strong>
-                    </div>
-                    <div>
-                      <span className="text-blue-300 block text-[9px] uppercase">Blood</span>
-                      <strong>{student.bloodGroup || 'O+'}</strong>
+                      <strong>{student.currentClass} {student.stream ? `• ${student.stream}` : ''}</strong>
                     </div>
                   </div>
                 </div>
