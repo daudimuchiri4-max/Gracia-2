@@ -838,6 +838,8 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
                   src={selectedVideo.videoUrl}
                   controls
                   autoPlay
+                  preload="auto"
+                  playsInline
                   className="w-full h-full object-contain"
                 />
               )}

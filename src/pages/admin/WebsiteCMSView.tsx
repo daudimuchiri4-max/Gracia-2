@@ -1860,8 +1860,11 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
             <div>
               <h3 className="font-bold text-sm text-slate-900">Public Website Video Gallery</h3>
               <p className="text-xs text-slate-500">
-                Add YouTube or video URLs so the public and prospective parents can view school tours and activity highlights.
+                Add YouTube video URLs for zero-buffering, lightning-fast high-definition streaming.
               </p>
+              <div className="mt-2 text-[11px] bg-blue-50 text-blue-900 px-3 py-1.5 rounded-lg border border-blue-200 inline-block font-medium">
+                💡 Tip: Paste any YouTube watch link (e.g. <code className="font-mono">https://www.youtube.com/watch?v=...</code>) for instant, buffer-free playback across all devices.
+              </div>
             </div>
             <Button
               variant="primary"
@@ -1944,16 +1947,24 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
                               showToast('Please select a valid video file (MP4, WebM)', 'warning');
                               return;
                             }
-                            if (file.size > 25 * 1024 * 1024) {
-                              showToast('Video file size should be under 25MB for web storage.', 'warning');
+                            if (file.size > 900 * 1024) {
+                              showToast('Video > 900KB exceeds database size limit. Please use a YouTube link or MP4 hosting link.', 'error');
+                              return;
                             }
-                            showToast('Attaching local video file...', 'info');
-                            const objectUrl = URL.createObjectURL(file);
-                            const copy = [...(content.videoGallery || [])];
-                            copy[idx] = { ...copy[idx], videoUrl: objectUrl };
-                            setContent({ ...content, videoGallery: copy });
-                            setHasUnsavedChanges(true);
-                            showToast('Video attached! Click Publish Video Gallery to save.', 'success');
+                            showToast('Encoding video file for deployment...', 'info');
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const dataUrl = event.target?.result as string;
+                              const copy = [...(content.videoGallery || [])];
+                              copy[idx] = { ...copy[idx], videoUrl: dataUrl };
+                              setContent({ ...content, videoGallery: copy });
+                              setHasUnsavedChanges(true);
+                              showToast('Video encoded! Click Publish Video Gallery to save.', 'success');
+                            };
+                            reader.onerror = () => {
+                              showToast('Failed to read video file', 'error');
+                            };
+                            reader.readAsDataURL(file);
                           }
                         }}
                       />

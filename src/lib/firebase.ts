@@ -20,12 +20,18 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 // Auth instance
 export const auth = getAuth(app);
 
-// Firestore instance with robust local persistence cache
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-}, firebaseConfigData.firestoreDatabaseId);
+// Firestore instance with robust local persistence cache and fallback
+export let db: any;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  }, firebaseConfigData.firestoreDatabaseId);
+} catch (e) {
+  console.warn('Persistent cache initialization failed, falling back to standard Firestore:', e);
+  db = getFirestore(app, firebaseConfigData.firestoreDatabaseId);
+}
 
 // Storage instance
 export const storage = getStorage(app);
