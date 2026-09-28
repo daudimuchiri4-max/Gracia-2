@@ -190,6 +190,35 @@ export const DEFAULT_WEBSITE_CONTENT: WebsiteContent = {
       imageUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=800&q=80',
     },
   ],
+  videoGallery: [
+    {
+      id: 'vid-1',
+      title: 'Gracia Learning Centre - Comprehensive Virtual Campus Tour',
+      description: 'Take a guided walkthrough of our modern classrooms, CBC science labs, library, and sports grounds in Kasarani Mwiki.',
+      videoUrl: 'https://www.youtube.com/watch?v=ScMzIvxBSi4',
+      thumbnailUrl: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=800&q=80',
+      category: 'Campus Tour',
+      date: '2026-01-15',
+    },
+    {
+      id: 'vid-2',
+      title: 'Junior School Coding & Robotics Exhibition',
+      description: 'Watch Grade 7 & 8 learners demonstrate automated robotics and Scratch programming projects during the annual science fair.',
+      videoUrl: 'https://www.youtube.com/watch?v=J_1EX2gqjpo',
+      thumbnailUrl: 'https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=800&q=80',
+      category: 'Academics & STEM',
+      date: '2026-02-10',
+    },
+    {
+      id: 'vid-3',
+      title: 'Annual Inter-House Swimming Gala & Sports Day',
+      description: 'Highlights from our thrilling semi-olympic pool competitions, track events, and rhythmic gymnastics showcases.',
+      videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      thumbnailUrl: 'https://images.unsplash.com/photo-1576013551627-0cc20b96c2a7?auto=format&fit=crop&w=800&q=80',
+      category: 'Sports & Co-Curricular',
+      date: '2026-02-28',
+    },
+  ],
   newsPosts: [
     {
       id: 'news-01',

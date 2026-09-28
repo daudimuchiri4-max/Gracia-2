@@ -111,7 +111,6 @@ export const StudentsView: React.FC = () => {
     emergencyPhone: '',
     allergies: '',
     medicalConditions: '',
-    bloodGroup: 'O+',
     isBoarder: false,
     transportRouteId: '',
   });
@@ -569,7 +568,6 @@ export const StudentsView: React.FC = () => {
                 emergencyPhone: '',
                 allergies: '',
                 medicalConditions: '',
-                bloodGroup: 'O+',
                 isBoarder: false,
                 transportRouteId: '',
               });
@@ -822,7 +820,6 @@ export const StudentsView: React.FC = () => {
                               emergencyPhone: std.emergencyPhone || '',
                               allergies: std.allergies || '',
                               medicalConditions: std.medicalConditions || '',
-                              bloodGroup: std.bloodGroup || 'O+',
                               isBoarder: std.isBoarder || false,
                               transportRouteId: std.transportRouteId || '',
                             });
@@ -1168,7 +1165,6 @@ export const StudentsView: React.FC = () => {
             emergencyPhone: std.emergencyPhone || '',
             allergies: std.allergies || '',
             medicalConditions: std.medicalConditions || '',
-            bloodGroup: std.bloodGroup || 'O+',
             isBoarder: std.isBoarder || false,
             transportRouteId: std.transportRouteId || '',
           });

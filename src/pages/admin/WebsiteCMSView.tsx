@@ -43,6 +43,7 @@ import {
   Award,
   DollarSign,
   Megaphone,
+  Film,
 } from 'lucide-react';
 
 const PRESET_IMAGES = [
@@ -102,12 +103,12 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
   const { school, reloadSchoolData } = useAuth();
   const { showToast } = useToast();
 
-  const [content, setContent] = useState<WebsiteContent | null>(null);
+  const [content, setContent] = useState<WebsiteContent>(DEFAULT_WEBSITE_CONTENT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'slides' | 'announcement' | 'logo' | 'stats' | 'typography' | 'about' | 'facilities' | 'payment' | 'faqs'
+    'slides' | 'announcement' | 'logo' | 'stats' | 'typography' | 'about' | 'facilities' | 'payment' | 'faqs' | 'videos'
   >('slides');
 
   // Preview Slide Index
@@ -179,6 +180,11 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
             ? data.faqs
             : DEFAULT_WEBSITE_CONTENT.faqs;
 
+        const ensuredVideoGallery =
+          data.videoGallery && data.videoGallery.length > 0
+            ? data.videoGallery
+            : DEFAULT_WEBSITE_CONTENT.videoGallery;
+
         const ensuredTypography: WebsiteTypographyConfig = data.typography || {
           heroTitle: {
             fontSize: '5xl',
@@ -213,6 +219,7 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
           stats: ensuredStats,
           facilities: ensuredFacilities,
           faqs: ensuredFaqs,
+          videoGallery: ensuredVideoGallery,
           logoUrl: data.logoUrl || school?.logoUrl || '',
         });
         setHasUnsavedChanges(false);
@@ -821,6 +828,18 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
         >
           <Globe className="w-4 h-4" />
           <span>Admissions FAQs ({content.faqs?.length || 0})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('videos')}
+          className={`pb-3 px-3 flex items-center gap-2 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+            activeTab === 'videos'
+              ? 'border-blue-900 text-blue-900'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <Film className="w-4 h-4" />
+          <span>Video Gallery ({content.videoGallery?.length || 0})</span>
         </button>
 
         <button
@@ -1829,6 +1848,150 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
               onClick={() => handleSave()}
             >
               Publish Admissions FAQs
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Video Gallery */}
+      {activeTab === 'videos' && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">Public Website Video Gallery</h3>
+              <p className="text-xs text-slate-500">
+                Add YouTube or video URLs so the public and prospective parents can view school tours and activity highlights.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                const newVid = {
+                  id: `vid-${Date.now()}`,
+                  title: 'New School Video',
+                  description: 'Description of school activity or campus tour',
+                  videoUrl: 'https://www.youtube.com/watch?v=ScMzIvxBSi4',
+                  thumbnailUrl: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=800&q=80',
+                  category: 'Campus Tour',
+                  date: new Date().toISOString().split('T')[0],
+                };
+                setContent({
+                  ...content,
+                  videoGallery: [...(content.videoGallery || []), newVid],
+                });
+                setHasUnsavedChanges(true);
+              }}
+            >
+              + Add Video Item
+            </Button>
+          </div>
+
+          <div className="space-y-4">
+            {(content.videoGallery || []).map((vid, idx) => (
+              <div key={vid.id || idx} className="p-4 border border-slate-200 rounded-xl space-y-3 bg-slate-50/50">
+                <div className="flex items-center justify-between gap-3">
+                  <input
+                    type="text"
+                    value={vid.title}
+                    onChange={(e) => {
+                      const copy = [...(content.videoGallery || [])];
+                      copy[idx] = { ...copy[idx], title: e.target.value };
+                      setContent({ ...content, videoGallery: copy });
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="Video Title"
+                    className="w-full font-bold text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-900"
+                  />
+                  <input
+                    type="text"
+                    value={vid.category || ''}
+                    onChange={(e) => {
+                      const copy = [...(content.videoGallery || [])];
+                      copy[idx] = { ...copy[idx], category: e.target.value };
+                      setContent({ ...content, videoGallery: copy });
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="Category (e.g. Campus Tour)"
+                    className="w-48 text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const copy = [...(content.videoGallery || [])];
+                      copy.splice(idx, 1);
+                      setContent({ ...content, videoGallery: copy });
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                    title="Delete Video"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={vid.videoUrl}
+                    onChange={(e) => {
+                      const copy = [...(content.videoGallery || [])];
+                      copy[idx] = { ...copy[idx], videoUrl: e.target.value };
+                      setContent({ ...content, videoGallery: copy });
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="Video URL (YouTube link or MP4 link)"
+                    className="w-full text-[11px] font-mono px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
+                  />
+                  <input
+                    type="text"
+                    value={vid.thumbnailUrl || ''}
+                    onChange={(e) => {
+                      const copy = [...(content.videoGallery || [])];
+                      copy[idx] = { ...copy[idx], thumbnailUrl: e.target.value };
+                      setContent({ ...content, videoGallery: copy });
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="Thumbnail Image URL"
+                    className="w-full text-[11px] font-mono px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
+                  />
+                </div>
+                <textarea
+                  rows={2}
+                  value={vid.description || ''}
+                  onChange={(e) => {
+                    const copy = [...(content.videoGallery || [])];
+                    copy[idx] = { ...copy[idx], description: e.target.value };
+                    setContent({ ...content, videoGallery: copy });
+                    setHasUnsavedChanges(true);
+                  }}
+                  placeholder="Video description / summary..."
+                  className="w-full text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              {hasUnsavedChanges ? (
+                <span className="text-amber-600 font-semibold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  Unsaved video gallery edits pending
+                </span>
+              ) : (
+                <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Video gallery published to website
+                </span>
+              )}
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Save className="w-4 h-4" />}
+              loading={saving}
+              onClick={() => handleSave()}
+            >
+              Publish Video Gallery
             </Button>
           </div>
         </div>

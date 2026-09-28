@@ -98,6 +98,16 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
     previousSchool: '',
   });
   const [submitting, setSubmitting] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<any | null>(null);
+
+  const getEmbedUrl = (url: string) => {
+    if (!url) return '';
+    const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+    if (ytMatch && ytMatch[1]) {
+      return `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`;
+    }
+    return url;
+  };
 
   useEffect(() => {
     loadContent();
@@ -736,6 +746,115 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
           </div>
         </div>
       </section>
+
+      {/* SECTION: PUBLIC VIDEO GALLERY & VIRTUAL TOURS */}
+      <section id="videos" className="py-20 bg-slate-50 border-t border-slate-200/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-12">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
+            <Badge variant="primary" size="md">
+              WATCH & EXPLORE
+            </Badge>
+            <h3 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              School Video Gallery & Virtual Tours
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Experience life at Gracia Learning Centre. Watch our campus walkthroughs, CBC science and robotics exhibitions, sports days, and talent showcases.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {(content?.videoGallery || []).map((vid) => {
+              const thumb = vid.thumbnailUrl || 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=800&q=80';
+              return (
+                <div
+                  key={vid.id}
+                  onClick={() => setSelectedVideo(vid)}
+                  className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs hover:shadow-lg transition-all cursor-pointer flex flex-col group"
+                >
+                  <div className="relative h-48 bg-slate-900 overflow-hidden">
+                    <img
+                      src={thumb}
+                      alt={vid.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-center justify-center">
+                      <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                        <svg className="w-6 h-6 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </div>
+                    {vid.category && (
+                      <span className="absolute top-3 left-3 bg-blue-900/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs">
+                        {vid.category}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-blue-900 transition-colors line-clamp-1">
+                        {vid.title}
+                      </h4>
+                      <p className="text-xs text-slate-600 mt-1.5 line-clamp-2 leading-relaxed">
+                        {vid.description}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-[11px] text-slate-400">
+                      <span>{vid.date || '2026 Season'}</span>
+                      <span className="text-blue-900 font-bold group-hover:underline flex items-center gap-1">
+                        Watch Video →
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Video Modal Player */}
+      {selectedVideo && (
+        <Modal
+          isOpen={!!selectedVideo}
+          onClose={() => setSelectedVideo(null)}
+          title={selectedVideo.title}
+          subtitle={selectedVideo.category ? `Category: ${selectedVideo.category}` : undefined}
+          maxWidth="3xl"
+        >
+          <div className="space-y-4">
+            <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black shadow-lg">
+              {selectedVideo.videoUrl.includes('youtube.com') || selectedVideo.videoUrl.includes('youtu.be') ? (
+                <iframe
+                  src={getEmbedUrl(selectedVideo.videoUrl)}
+                  title={selectedVideo.title}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  src={selectedVideo.videoUrl}
+                  controls
+                  autoPlay
+                  className="w-full h-full object-contain"
+                />
+              )}
+            </div>
+            {selectedVideo.description && (
+              <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-200">
+                {selectedVideo.description}
+              </p>
+            )}
+            <div className="flex justify-end pt-2">
+              <Button variant="primary" onClick={() => setSelectedVideo(null)}>
+                Close Player
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* NEW INTERACTIVE EXACT FEE STRUCTURE SECTION */}
       <section id="fees" className="py-20 bg-slate-900 text-white relative overflow-hidden">

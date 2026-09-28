@@ -194,7 +194,6 @@ export interface Student {
   emergencyPhone?: string;
   allergies?: string;
   medicalConditions?: string;
-  bloodGroup?: string;
   specialNeeds?: string;
   isBoarder?: boolean;
   transportRouteId?: string;
@@ -651,6 +650,15 @@ export interface WebsiteContent {
     caption: string;
     category: string;
     imageUrl: string;
+  }[];
+  videoGallery?: {
+    id: string;
+    title: string;
+    description?: string;
+    videoUrl: string;
+    thumbnailUrl?: string;
+    category?: string;
+    date?: string;
   }[];
   faqs: {
     question: string;
