@@ -316,6 +316,7 @@ export const operationsService = {
           heroSlides: rawData.heroSlides && rawData.heroSlides.length > 0 ? rawData.heroSlides : DEFAULT_WEBSITE_CONTENT.heroSlides,
           facilities: rawData.facilities && rawData.facilities.length > 0 ? rawData.facilities : DEFAULT_WEBSITE_CONTENT.facilities,
           faqs: rawData.faqs && rawData.faqs.length > 0 ? rawData.faqs : DEFAULT_WEBSITE_CONTENT.faqs,
+          videoGallery: rawData.videoGallery && rawData.videoGallery.length > 0 ? rawData.videoGallery : DEFAULT_WEBSITE_CONTENT.videoGallery,
           typography: rawData.typography || DEFAULT_WEBSITE_CONTENT.typography,
         };
         const data = sanitizeContent(mergedData);

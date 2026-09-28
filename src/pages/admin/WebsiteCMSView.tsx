@@ -1929,31 +1929,99 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    value={vid.videoUrl}
-                    onChange={(e) => {
-                      const copy = [...(content.videoGallery || [])];
-                      copy[idx] = { ...copy[idx], videoUrl: e.target.value };
-                      setContent({ ...content, videoGallery: copy });
-                      setHasUnsavedChanges(true);
-                    }}
-                    placeholder="Video URL (YouTube link or MP4 link)"
-                    className="w-full text-[11px] font-mono px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
-                  />
-                  <input
-                    type="text"
-                    value={vid.thumbnailUrl || ''}
-                    onChange={(e) => {
-                      const copy = [...(content.videoGallery || [])];
-                      copy[idx] = { ...copy[idx], thumbnailUrl: e.target.value };
-                      setContent({ ...content, videoGallery: copy });
-                      setHasUnsavedChanges(true);
-                    }}
-                    placeholder="Thumbnail Image URL"
-                    className="w-full text-[11px] font-mono px-3 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-700"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        className="hidden"
+                        id={`vid-upload-${idx}`}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            if (!file.type.startsWith('video/')) {
+                              showToast('Please select a valid video file (MP4, WebM)', 'warning');
+                              return;
+                            }
+                            if (file.size > 25 * 1024 * 1024) {
+                              showToast('Video file size should be under 25MB for web storage.', 'warning');
+                            }
+                            showToast('Attaching local video file...', 'info');
+                            const objectUrl = URL.createObjectURL(file);
+                            const copy = [...(content.videoGallery || [])];
+                            copy[idx] = { ...copy[idx], videoUrl: objectUrl };
+                            setContent({ ...content, videoGallery: copy });
+                            setHasUnsavedChanges(true);
+                            showToast('Video attached! Click Publish Video Gallery to save.', 'success');
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`vid-upload-${idx}`}
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 shadow-xs shrink-0"
+                      >
+                        📁 Upload Video (.mp4)
+                      </label>
+                      <input
+                        type="text"
+                        value={vid.videoUrl}
+                        onChange={(e) => {
+                          const copy = [...(content.videoGallery || [])];
+                          copy[idx] = { ...copy[idx], videoUrl: e.target.value };
+                          setContent({ ...content, videoGallery: copy });
+                          setHasUnsavedChanges(true);
+                        }}
+                        placeholder="Or paste video URL..."
+                        className="w-full text-[11px] font-mono px-2 py-1 border border-slate-200 rounded-lg bg-white text-slate-700 truncate"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        id={`thumb-upload-${idx}`}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              showToast('Optimizing thumbnail...', 'info');
+                              const compressed = await compressImage(file, { maxWidth: 800, maxHeight: 450, quality: 0.7 });
+                              const copy = [...(content.videoGallery || [])];
+                              copy[idx] = { ...copy[idx], thumbnailUrl: compressed };
+                              setContent({ ...content, videoGallery: copy });
+                              setHasUnsavedChanges(true);
+                              showToast('Thumbnail updated!', 'success');
+                            } catch (err: any) {
+                              showToast('Error: ' + err.message, 'error');
+                            }
+                          }
+                        }}
+                      />
+                      <label
+                        htmlFor={`thumb-upload-${idx}`}
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 shadow-xs shrink-0"
+                      >
+                        🖼️ Thumbnail
+                      </label>
+                      <input
+                        type="text"
+                        value={vid.thumbnailUrl || ''}
+                        onChange={(e) => {
+                          const copy = [...(content.videoGallery || [])];
+                          copy[idx] = { ...copy[idx], thumbnailUrl: e.target.value };
+                          setContent({ ...content, videoGallery: copy });
+                          setHasUnsavedChanges(true);
+                        }}
+                        placeholder="Thumbnail image URL..."
+                        className="w-full text-[11px] font-mono px-2 py-1 border border-slate-200 rounded-lg bg-white text-slate-700 truncate"
+                      />
+                    </div>
+                  </div>
                 </div>
                 <textarea
                   rows={2}
