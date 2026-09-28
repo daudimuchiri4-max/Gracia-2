@@ -11,6 +11,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { AuthModal } from '../../components/ui/AuthModal';
 import { StaffLoginModal } from '../../components/ui/StaffLoginModal';
+import { getVideoBlobUrl } from '../../utils/videoStorage';
 import {
   GraduationCap,
   Sparkles,
@@ -99,6 +100,25 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
   });
   const [submitting, setSubmitting] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<any | null>(null);
+  const [resolvedVideoUrl, setResolvedVideoUrl] = useState<string>('');
+
+  useEffect(() => {
+    let active = true;
+    if (selectedVideo?.videoUrl) {
+      if (selectedVideo.videoUrl.startsWith('local-video://')) {
+        getVideoBlobUrl(selectedVideo.videoUrl).then((url) => {
+          if (active) setResolvedVideoUrl(url);
+        });
+      } else {
+        setResolvedVideoUrl(selectedVideo.videoUrl);
+      }
+    } else {
+      setResolvedVideoUrl('');
+    }
+    return () => {
+      active = false;
+    };
+  }, [selectedVideo]);
 
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
@@ -835,7 +855,7 @@ export const PublicWebsite: React.FC<PublicWebsiteProps> = ({ onEnterPortal, onO
                 />
               ) : (
                 <video
-                  src={selectedVideo.videoUrl}
+                  src={resolvedVideoUrl}
                   controls
                   autoPlay
                   preload="auto"

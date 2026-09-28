@@ -5,6 +5,7 @@ import { operationsService } from '../../services/operationsService';
 import { schoolService, DEFAULT_SCHOOL_ID, DEFAULT_WEBSITE_CONTENT } from '../../services/schoolService';
 import { WebsiteContent, HeroSlide, TypographyStyle, WebsiteTypographyConfig } from '../../types';
 import { compressImage } from '../../utils/imageCompressor';
+import { saveVideoBlob } from '../../utils/videoStorage';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
@@ -1940,31 +1941,29 @@ export const WebsiteCMSView: React.FC<WebsiteCMSViewProps> = ({ onOpenPublicSite
                         accept="video/*"
                         className="hidden"
                         id={`vid-upload-${idx}`}
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
                             if (!file.type.startsWith('video/')) {
                               showToast('Please select a valid video file (MP4, WebM)', 'warning');
                               return;
                             }
-                            if (file.size > 900 * 1024) {
-                              showToast('Video > 900KB exceeds database size limit. Please use a YouTube link or MP4 hosting link.', 'error');
+                            if (file.size > 50 * 1024 * 1024) {
+                              showToast('Video file size should be under 50MB.', 'warning');
                               return;
                             }
-                            showToast('Encoding video file for deployment...', 'info');
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              const dataUrl = event.target?.result as string;
+                            try {
+                              showToast('Saving video to local storage...', 'info');
+                              const vidId = vid.id || `vid-${Date.now()}`;
+                              const localRef = await saveVideoBlob(vidId, file);
                               const copy = [...(content.videoGallery || [])];
-                              copy[idx] = { ...copy[idx], videoUrl: dataUrl };
+                              copy[idx] = { ...copy[idx], id: vidId, videoUrl: localRef };
                               setContent({ ...content, videoGallery: copy });
                               setHasUnsavedChanges(true);
-                              showToast('Video encoded! Click Publish Video Gallery to save.', 'success');
-                            };
-                            reader.onerror = () => {
-                              showToast('Failed to read video file', 'error');
-                            };
-                            reader.readAsDataURL(file);
+                              showToast('Video saved! Click Publish Video Gallery to save.', 'success');
+                            } catch (err: any) {
+                              showToast('Error saving video: ' + err.message, 'error');
+                            }
                           }
                         }}
                       />
