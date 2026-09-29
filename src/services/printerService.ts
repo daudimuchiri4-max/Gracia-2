@@ -7,7 +7,7 @@
  * 4. System / Network Print Driver (Formatted 80mm, 58mm, A4, and ID Card layouts via browser/OS driver)
  */
 
-import { School, Payment, Student, ReportCard, FeeStructure, UserProfile } from '../types';
+import { School, Payment, Student, ReportCard, FeeStructure, UserProfile, Assessment, AssessmentResult } from '../types';
 import QRCode from 'qrcode';
 
 export type PaperWidth = '80mm' | '58mm' | 'A4';
@@ -515,11 +515,27 @@ class PrinterService {
     }
   }
 
+  private getSchoolLogo(school: School | null): string {
+    if (school?.logoUrl && !school.logoUrl.includes('unsplash.com') && school.logoUrl.trim() !== '') {
+      return school.logoUrl;
+    }
+    return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="65" height="65"><path d="M60 5L10 25v35c0 28.5 21.2 51.5 50 55 28.8-3.5 50-26.5 50-55V25L60 5z" fill="%231e3a8a"/><text x="60" y="55" font-size="28" font-weight="900" fill="%23fbbf24" text-anchor="middle">GLC</text><text x="60" y="78" font-size="12" font-weight="700" fill="white" text-anchor="middle">MARIRU</text></svg>';
+  }
+
+  private async generateVerificationQRCode(payload: string): Promise<string> {
+    try {
+      return await QRCode.toDataURL(payload, { width: 120, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } });
+    } catch (e) {
+      return '';
+    }
+  }
+
   /**
    * Print CBC Assessment Report Card on A4
    */
-  public printReportCard(reportCard: ReportCard, school: School | null): void {
-    const html = this.generateReportCardHtml(reportCard, school);
+  public async printReportCard(reportCard: ReportCard, school: School | null): Promise<void> {
+    const qrDataUrl = await this.generateVerificationQRCode(`GRACIA-REPORT: ${reportCard.admissionNumber} - ${reportCard.academicYear} - ${reportCard.term}`);
+    const html = this.generateReportCardHtml(reportCard, school, qrDataUrl);
     this.printA4Document(html, `CBC_Report_${reportCard.admissionNumber.replace(/\//g, '_')}`);
   }
 
@@ -1181,7 +1197,7 @@ class PrinterService {
   /**
    * HTML Template: CBC Learner Assessment Report Card (A4)
    */
-  private generateReportCardHtml(reportCard: ReportCard, school: School | null): string {
+  private generateReportCardHtml(reportCard: ReportCard, school: School | null, qrDataUrl: string = ''): string {
     const results = reportCard.results || [];
     const totalScore = results.reduce((s, r) => s + r.score, 0);
     const avgPct = reportCard.averagePercentage || Math.round(totalScore / (results.length || 1));
@@ -1222,7 +1238,7 @@ class PrinterService {
       <body>
         <div class="header">
           <div style="display: flex; align-items: center; gap: 14px;">
-            <img src="${(school?.logoUrl && !school.logoUrl.includes('unsplash.com')) ? school.logoUrl : '/gracia_logo.svg'}" alt="School Crest" style="width: 65px; height: 65px; object-fit: contain; padding: 2px;" />
+            <img src="${this.getSchoolLogo(school)}" alt="School Crest" style="width: 65px; height: 65px; object-fit: contain; padding: 2px;" />
             <div>
               <div class="school-title">${school?.name || 'Gracia Learning Centre'}</div>
               <div class="school-meta" style="font-weight: bold; color: #ea580c;">${school?.motto || '— I can! I will! —'}</div>
@@ -1289,11 +1305,13 @@ class PrinterService {
 
         <div class="footer-box">
           <div>
-            <div style="font-size: 11px; color: #475569;">Next Term Opening Date: <strong style="color: #0f172a;">${reportCard.openingDateNextTerm || 'May 2026'}</strong></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Competency-Based Curriculum Assessment Framework • MoE / KNEC Standards</div>
           </div>
-          <div class="seal-box">
-            Official School Stamp & Seal
+          <div style="display: flex; align-items: center; gap: 10px;">
+            ${qrDataUrl ? `<img src="${qrDataUrl}" style="width: 55px; height: 55px; object-fit: contain;" alt="Verification QR" />` : ''}
+            <div class="seal-box">
+              Official School Stamp & Seal
+            </div>
           </div>
         </div>
       </body>
@@ -2280,86 +2298,167 @@ class PrinterService {
   }
 
   /**
+   * Print CBC Assessment Marks Sheet on A4
+   */
+  printAssessmentMarksSheet(assessment: Assessment, results: AssessmentResult[], students: Student[], school: School): void {
+    const schoolName = school?.name || 'Gracia Learning Centre';
+    const logoUrl = school?.logoUrl || '';
+
+    const rows = students.map((std, idx) => {
+      const res = results.find((r) => r.studentId === std.id);
+      const score = res ? res.score : '-';
+      const maxScore = assessment.maxScore || 100;
+      const percentage = res ? `${res.percentage}%` : '-';
+      const grade = res ? res.grade : '-';
+      const cbcRating = res ? res.cbcRating : '-';
+      const comment = res ? (res.teacherComment || '') : '';
+
+      return `
+        <tr>
+          <td style="text-align: center; color: #64748b;">${idx + 1}</td>
+          <td style="font-family: monospace; font-weight: 600;">${std.admissionNumber || std.id}</td>
+          <td style="font-weight: 600;">${std.fullName}</td>
+          <td style="text-align: center;">${std.gender || '-'}</td>
+          <td style="text-align: center; font-weight: bold; color: #1e3a8a;">${score} / ${maxScore}</td>
+          <td style="text-align: center; font-weight: bold;">${percentage}</td>
+          <td style="text-align: center;"><span style="padding: 2px 6px; background: #e0f2fe; color: #0369a1; border-radius: 4px; font-weight: bold;">${grade}</span></td>
+          <td style="text-align: center;"><span style="padding: 2px 6px; background: #fef3c7; color: #b45309; border-radius: 4px; font-weight: bold;">${cbcRating}</span></td>
+          <td>${comment}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Assessment Marks Sheet - ${assessment.title}</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; margin: 0; padding: 0; font-size: 11px; line-height: 1.4; }
+          .sheet { max-width: 190mm; margin: 0 auto; background: white; }
+          .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }
+          .logo { width: 55px; height: 55px; object-fit: contain; }
+          .school-info { text-align: center; flex: 1; padding: 0 15px; }
+          .school-name { font-size: 18px; font-weight: 900; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
+          .school-sub { font-size: 10px; color: #64748b; margin-top: 3px; }
+          .doc-title { font-size: 13px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; background: #f1f5f9; padding: 6px 12px; border-radius: 6px; text-align: center; margin-bottom: 14px; }
+          .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 14px; font-size: 10px; }
+          .meta-item strong { display: block; color: #64748b; font-size: 9px; text-transform: uppercase; margin-bottom: 2px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+          th { background: #1e3a8a; color: white; font-weight: 700; padding: 7px 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
+          td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 10px; vertical-align: middle; }
+          tr:nth-child(even) { background: #f8fafc; }
+          .sign-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 30px; page-break-inside: avoid; }
+          .sign-box { border-top: 1px solid #cbd5e1; padding-top: 8px; }
+          .sign-role { font-weight: 700; color: #334155; font-size: 10px; }
+          .sign-date { font-size: 9px; color: #64748b; margin-top: 3px; }
+          .footer { text-align: center; font-size: 9px; color: #94a3b8; margin-top: 25px; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+        </style>
+      </head>
+      <body>
+        <div class="sheet">
+          <div class="header">
+            <img src="${this.getSchoolLogo(school)}" class="logo" />
+            <div class="school-info">
+              <h1 class="school-name">${schoolName}</h1>
+              <div class="school-sub">${school?.address || 'Nairobi, Kenya'} • ${school?.phone || ''}</div>
+            </div>
+            <div style="width: 55px; text-align: right; font-size: 9px; font-weight: bold; color: #1e3a8a;">CBC / CBE</div>
+          </div>
+
+          <div class="doc-title">
+            CBC Assessment Marks Sheet & Evaluation Report
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta-item">
+              <strong>Assessment Title</strong>
+              <span>${assessment.title}</span>
+            </div>
+            <div class="meta-item">
+              <strong>Learning Area</strong>
+              <span>${assessment.subjectName}</span>
+            </div>
+            <div class="meta-item">
+              <strong>Class / Stream</strong>
+              <span>${assessment.classLevel} ${assessment.stream ? '• ' + assessment.stream : ''}</span>
+            </div>
+            <div class="meta-item">
+              <strong>Term & Year</strong>
+              <span>${assessment.term} (${assessment.academicYear})</span>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 30px; text-align: center;">#</th>
+                <th style="width: 80px;">Adm No</th>
+                <th>Learner Full Name</th>
+                <th style="width: 50px; text-align: center;">Gender</th>
+                <th style="width: 70px; text-align: center;">Score</th>
+                <th style="width: 60px; text-align: center;">%</th>
+                <th style="width: 50px; text-align: center;">Grade</th>
+                <th style="width: 60px; text-align: center;">Rating</th>
+                <th>Teacher Remarks / Competency Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+
+          <div class="sign-grid">
+            <div class="sign-box">
+              <div class="sign-role">Subject Teacher</div>
+              <div class="sign-date">Sign: _________________ Date: ______</div>
+            </div>
+            <div class="sign-box">
+              <div class="sign-role">Academic Master / Principal</div>
+              <div class="sign-date">Sign: _________________ Date: ______</div>
+            </div>
+            <div class="sign-box">
+              <div class="sign-role">Official School Stamp</div>
+              <div class="sign-date">Date: ________________________</div>
+            </div>
+          </div>
+
+          <div class="footer">
+            Generated by Gracia School ERP • Ministry of Education CBC Competency Assessment Framework • ${new Date().toLocaleString('en-GB')}
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    this.printViaIframe(html, 'A4', `Assessment-Marks-${assessment.title.replace(/\s+/g, '_')}`);
+  }
+
+  /**
    * Helper: Print HTML via hidden iframe without disturbing the active screen
    */
   private printViaIframe(htmlContent: string, format: string, title?: string): void {
-    const existingFrame = document.getElementById('printer_service_iframe');
-    if (existingFrame) {
-      existingFrame.remove();
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'printer_service_iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      // Fallback
-      window.print();
-      return;
-    }
-
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
-
-    const triggerPrint = () => {
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch (e) {
-        console.warn('Iframe print failed, falling back to window.open:', e);
-        const win = window.open('', '_blank');
-        if (win) {
-          win.document.open();
-          win.document.write(htmlContent);
-          win.document.close();
-          win.focus();
-          setTimeout(() => win.print(), 500);
-        }
-      } finally {
-        setTimeout(() => iframe.remove(), 2500);
-      }
-    };
-
-    // Wait for images (like the school logo/crest) to finish loading before triggering print
-    const images = Array.from(doc.images);
-    if (images.length === 0) {
-      setTimeout(triggerPrint, 250);
-    } else {
-      let loaded = 0;
-      let triggered = false;
-      const onImgDone = () => {
-        loaded++;
-        if (loaded >= images.length && !triggered) {
-          triggered = true;
-          setTimeout(triggerPrint, 100);
-        }
-      };
-
-      images.forEach((img) => {
-        if (img.complete) {
-          onImgDone();
-        } else {
-          img.onload = onImgDone;
-          img.onerror = onImgDone;
-        }
-      });
-
-      // Safety timeout in case an image takes too long
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.open();
+      win.document.write(htmlContent);
+      win.document.close();
+      win.focus();
       setTimeout(() => {
-        if (!triggered) {
-          triggered = true;
-          triggerPrint();
+        try {
+          win.print();
+        } catch (e) {
+          console.error('Print failed:', e);
         }
-      }, 1000);
+      }, 600);
+    } else {
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.click();
     }
   }
 }

@@ -8,7 +8,8 @@ import { Assessment, AssessmentResult, Subject, Student, GradeLevel, CBCRating }
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
-import { Award, PlusCircle, Save, CheckCircle, Calculator, Search } from 'lucide-react';
+import { Award, PlusCircle, Save, CheckCircle, Calculator, Search, Printer } from 'lucide-react';
+import { printerService } from '../../services/printerService';
 
 const GRADE_LEVELS: GradeLevel[] = [
   'Playgroup',
@@ -66,6 +67,12 @@ export const AssessmentsView: React.FC = () => {
     maxScore: 100,
     date: new Date().toISOString().split('T')[0],
   });
+
+  // Registry state
+  const [activeTab, setActiveTab] = useState<'scoring' | 'registry'>('scoring');
+  const [allResults, setAllResults] = useState<AssessmentResult[]>([]);
+  const [loadingRegistry, setLoadingRegistry] = useState(false);
+  const [registrySearch, setRegistrySearch] = useState('');
 
   const handleUpdateAssessment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,6 +223,31 @@ export const AssessmentsView: React.FC = () => {
     }
   };
 
+  const handleUpdateRemark = async (resId: string, newRemark: string) => {
+    try {
+      const targetRes = allResults.find((r) => r.id === resId);
+      if (!targetRes || !school?.id) return;
+      await assessmentService.saveResult(school.id, {
+        assessmentId: targetRes.assessmentId,
+        studentId: targetRes.studentId,
+        studentName: targetRes.studentName,
+        admissionNumber: targetRes.admissionNumber,
+        classLevel: targetRes.classLevel,
+        stream: targetRes.stream || '',
+        subjectName: targetRes.subjectName,
+        score: targetRes.score,
+        maxScore: targetRes.maxScore,
+        teacherComment: newRemark,
+      });
+      setAllResults((prev) =>
+        prev.map((r) => (r.id === resId ? { ...r, teacherComment: newRemark } : r))
+      );
+      showToast('Remark updated successfully!', 'success');
+    } catch (e: any) {
+      showToast('Error updating remark: ' + e.message, 'error');
+    }
+  };
+
   const classStudents = selectedAssessment
     ? students.filter(
         (s) =>
@@ -264,8 +296,47 @@ export const AssessmentsView: React.FC = () => {
         </Button>
       </div>
 
-      {/* Assessment Selector Bar */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
+      {/* Tabs */}
+      <div className="flex items-center gap-2 border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('scoring')}
+          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'scoring'
+              ? 'border-blue-900 text-blue-900'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          📝 Enter & Score Marks
+        </button>
+        <button
+          onClick={async () => {
+            setActiveTab('registry');
+            if (allResults.length === 0 && school?.id) {
+              setLoadingRegistry(true);
+              try {
+                const res = await assessmentService.getResults(school.id);
+                setAllResults(res);
+              } catch (e: any) {
+                showToast('Error loading results registry', 'error');
+              } finally {
+                setLoadingRegistry(false);
+              }
+            }
+          }}
+          className={`pb-3 px-4 text-xs font-bold border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'registry'
+              ? 'border-blue-900 text-blue-900'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          📊 View All Saved Marks Registry
+        </button>
+      </div>
+
+      {activeTab === 'scoring' && (
+        <>
+          {/* Assessment Selector Bar */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Award className="w-5 h-5 text-blue-900" />
           <div>
@@ -331,6 +402,29 @@ export const AssessmentsView: React.FC = () => {
               }}
             >
               Delete
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Printer className="w-4 h-4" />}
+              onClick={async () => {
+                if (!selectedAssessment || !school?.id) return;
+                showToast('Preparing class marks sheet for printing...', 'info');
+                try {
+                  const assessmentResults = await assessmentService.getResults(school.id, { assessmentId: selectedAssessment.id });
+                  const targetStudents = students.filter(
+                    (s) =>
+                      s.currentClass === selectedAssessment.classLevel &&
+                      (!selectedAssessment.stream || s.stream === selectedAssessment.stream)
+                  );
+                  printerService.printAssessmentMarksSheet(selectedAssessment, assessmentResults, targetStudents, school);
+                  showToast('Print dialog opened successfully!', 'success');
+                } catch (e: any) {
+                  showToast('Error generating print sheet: ' + e.message, 'error');
+                }
+              }}
+            >
+              Print / Save PDF (Per Class)
             </Button>
             <Button
               variant="secondary"
@@ -419,6 +513,101 @@ export const AssessmentsView: React.FC = () => {
       ) : (
         <div className="p-12 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-200">
           No assessments configured yet. Click 'New Assessment' or load demo data.
+        </div>
+      )}
+        </>
+      )}
+
+      {activeTab === 'registry' && (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden space-y-4 p-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-sm text-slate-900">Saved Marks & Competency Registry</h3>
+              <p className="text-xs text-slate-500">Browse all recorded student results across assessments and learning areas.</p>
+            </div>
+            <div className="relative w-full sm:w-72">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search learner name or adm no..."
+                value={registrySearch}
+                onChange={(e) => setRegistrySearch(e.target.value)}
+                className="w-full text-xs pl-9 pr-3 py-2 border border-slate-200 rounded-xl bg-slate-50"
+              />
+            </div>
+          </div>
+
+          {loadingRegistry ? (
+            <div className="py-12 text-center text-xs text-slate-500">Loading saved marks registry...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                    <th className="p-3">Learner Name</th>
+                    <th className="p-3">Assessment Title</th>
+                    <th className="p-3">Subject / Area</th>
+                    <th className="p-3 text-center">Score</th>
+                    <th className="p-3 text-center">Percentage</th>
+                    <th className="p-3 text-center">Grade</th>
+                    <th className="p-3 text-center">CBC Rating</th>
+                    <th className="p-3">Teacher Remarks</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allResults
+                    .filter((r) => {
+                      if (!registrySearch) return true;
+                      const s = students.find((st) => st.id === r.studentId);
+                      const sName = s ? s.fullName.toLowerCase() : '';
+                      const adm = s ? (s.admissionNumber || '').toLowerCase() : '';
+                      const q = registrySearch.toLowerCase();
+                      return sName.includes(q) || adm.includes(q) || r.subjectName.toLowerCase().includes(q);
+                    })
+                    .map((res) => {
+                      const std = students.find((s) => s.id === res.studentId);
+                      const ass = assessments.find((a) => a.id === res.assessmentId);
+                      return (
+                        <tr key={res.id} className="hover:bg-slate-50/80">
+                          <td className="p-3 font-semibold text-slate-900">
+                            {std ? std.fullName : res.studentId}
+                            <span className="block font-mono text-[10px] text-slate-400">{std?.admissionNumber}</span>
+                          </td>
+                          <td className="p-3 text-slate-700 font-medium">{ass ? ass.title : res.assessmentId}</td>
+                          <td className="p-3 text-slate-700">{res.subjectName}</td>
+                          <td className="p-3 text-center font-bold text-blue-900">{res.score} / {res.maxScore}</td>
+                          <td className="p-3 text-center font-semibold">{res.percentage}%</td>
+                          <td className="p-3 text-center">
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-800 rounded font-bold">{res.grade}</span>
+                          </td>
+                          <td className="p-3 text-center">{getCBCRatingBadge(res.cbcRating)}</td>
+                          <td className="p-3">
+                            <input
+                              type="text"
+                              defaultValue={res.teacherComment || ''}
+                              onBlur={(e) => {
+                                if (e.target.value !== (res.teacherComment || '')) {
+                                  handleUpdateRemark(res.id, e.target.value);
+                                }
+                              }}
+                              placeholder="Type remark..."
+                              className="w-full px-2.5 py-1 text-xs border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-800"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  {allResults.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                        No saved assessment marks found in the registry yet. Enter and save marks in the scoring tab.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

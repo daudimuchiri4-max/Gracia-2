@@ -1047,17 +1047,12 @@ export const SystemOwnerConsole: React.FC<{ onNavigate?: (view: any) => void }> 
             <div className="p-3 bg-slate-900 text-white rounded-xl space-y-1 font-mono">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-slate-400 uppercase tracking-widest block font-sans">Provider Master Passkey</span>
-                <button
-                  type="button"
-                  onClick={() => setShowActivePasskeyCard(!showActivePasskeyCard)}
-                  className="text-slate-400 hover:text-white text-[10px] font-sans flex items-center gap-1 cursor-pointer"
-                >
-                  {showActivePasskeyCard ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                  <span>{showActivePasskeyCard ? 'Hide' : 'Reveal'}</span>
-                </button>
+                <span className="text-[10px] text-emerald-400 font-sans font-bold flex items-center gap-1">
+                  🔒 Secured & Encrypted
+                </span>
               </div>
-              <p className="text-emerald-400 font-bold tracking-wider break-all font-mono">
-                {showActivePasskeyCard ? currentMasterPasskeyDisplay : '••••••••••••••••••••'}
+              <p className="text-slate-300 font-bold tracking-widest break-all font-mono">
+                ••••••••••••••••••••
               </p>
             </div>
 
