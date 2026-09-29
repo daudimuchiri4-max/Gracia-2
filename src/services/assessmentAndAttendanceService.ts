@@ -4,6 +4,7 @@ import {
   getDocs,
   getDoc,
   setDoc,
+  updateDoc,
   deleteDoc,
   query,
   where,
@@ -73,6 +74,16 @@ export const assessmentService = {
     };
     await setDoc(newDoc, cleanForFirestore(newAss));
     return newAss;
+  },
+
+  async updateAssessment(schoolId: string, assessmentId: string, data: Partial<Assessment>): Promise<void> {
+    const docRef = doc(db, 'schools', schoolId, 'assessments', assessmentId);
+    await updateDoc(docRef, cleanForFirestore(data));
+  },
+
+  async deleteAssessment(schoolId: string, assessmentId: string): Promise<void> {
+    const docRef = doc(db, 'schools', schoolId, 'assessments', assessmentId);
+    await deleteDoc(docRef);
   },
 
   async getResults(schoolId: string, options?: { assessmentId?: string; studentId?: string }): Promise<AssessmentResult[]> {

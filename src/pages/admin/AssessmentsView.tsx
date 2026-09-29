@@ -53,6 +53,41 @@ export const AssessmentsView: React.FC = () => {
     date: new Date().toISOString().split('T')[0],
   });
 
+  // Edit Assessment Modal
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editAssForm, setEditAssForm] = useState({
+    title: '',
+    type: 'MID_TERM' as Assessment['type'],
+    academicYear: '2026',
+    term: 'Term 1' as 'Term 1' | 'Term 2' | 'Term 3',
+    classLevel: 'Grade 6' as GradeLevel,
+    stream: '',
+    subjectId: '',
+    maxScore: 100,
+    date: new Date().toISOString().split('T')[0],
+  });
+
+  const handleUpdateAssessment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAssessment || !school?.id) return;
+    try {
+      const sub = subjects.find((s) => s.id === editAssForm.subjectId);
+      const updatedData = {
+        ...editAssForm,
+        subjectName: sub ? sub.name : selectedAssessment.subjectName,
+      };
+      await assessmentService.updateAssessment(school.id, selectedAssessment.id, updatedData);
+      showToast('Assessment updated successfully!', 'success');
+      setIsEditModalOpen(false);
+      await loadData();
+      const updatedList = await assessmentService.getAssessments(school.id);
+      const newlyUpdated = updatedList.find((a) => a.id === selectedAssessment.id);
+      if (newlyUpdated) setSelectedAssessment(newlyUpdated);
+    } catch (e: any) {
+      showToast('Error updating assessment: ' + e.message, 'error');
+    }
+  };
+
   useEffect(() => {
     if (!school?.id) return;
     loadData();
@@ -256,6 +291,48 @@ export const AssessmentsView: React.FC = () => {
           <div className="flex items-center gap-3 text-xs">
             <span className="text-slate-500 font-medium">Max Score: <strong>{selectedAssessment.maxScore}</strong></span>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditAssForm({
+                  title: selectedAssessment.title,
+                  type: selectedAssessment.type,
+                  academicYear: selectedAssessment.academicYear,
+                  term: selectedAssessment.term,
+                  classLevel: selectedAssessment.classLevel,
+                  stream: selectedAssessment.stream || '',
+                  subjectId: selectedAssessment.subjectId || '',
+                  maxScore: selectedAssessment.maxScore || 100,
+                  date: selectedAssessment.date || new Date().toISOString().split('T')[0],
+                });
+                setIsEditModalOpen(true);
+              }}
+            >
+              Edit Assessment
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={async () => {
+                if (!window.confirm(`Are you sure you want to delete "${selectedAssessment.title}" and all its recorded student results?`)) return;
+                try {
+                  await assessmentService.deleteAssessment(school!.id, selectedAssessment.id);
+                  showToast('Assessment deleted successfully', 'success');
+                  const updated = assessments.filter((a) => a.id !== selectedAssessment.id);
+                  setAssessments(updated);
+                  if (updated.length > 0) {
+                    selectAssessment(updated[0]);
+                  } else {
+                    setSelectedAssessment(null);
+                  }
+                } catch (e: any) {
+                  showToast('Error deleting assessment: ' + e.message, 'error');
+                }
+              }}
+            >
+              Delete
+            </Button>
+            <Button
               variant="secondary"
               size="sm"
               loading={saving}
@@ -452,6 +529,118 @@ export const AssessmentsView: React.FC = () => {
             </Button>
             <Button variant="primary" type="submit">
               Create Assessment
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Assessment Modal */}
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit CBC Assessment" maxWidth="md">
+        <form onSubmit={handleUpdateAssessment} className="space-y-3 text-xs">
+          <div>
+            <label className="font-semibold text-slate-700">Assessment Title *</label>
+            <input
+              type="text"
+              required
+              value={editAssForm.title}
+              onChange={(e) => setEditAssForm({ ...editAssForm, title: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-semibold text-slate-700">Assessment Type</label>
+              <select
+                value={editAssForm.type}
+                onChange={(e) => setEditAssForm({ ...editAssForm, type: e.target.value as any })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white"
+              >
+                <option value="CAT">Continuous Assessment (CAT)</option>
+                <option value="MID_TERM">Mid-Term Evaluation</option>
+                <option value="END_TERM">End of Term Examination</option>
+                <option value="CBC_PRACTICAL">CBC Practical / Project</option>
+              </select>
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Term</label>
+              <select
+                value={editAssForm.term}
+                onChange={(e) => setEditAssForm({ ...editAssForm, term: e.target.value as any })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white"
+              >
+                <option value="Term 1">Term 1</option>
+                <option value="Term 2">Term 2</option>
+                <option value="Term 3">Term 3</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-semibold text-slate-700">Grade Level</label>
+              <select
+                value={editAssForm.classLevel}
+                onChange={(e) => setEditAssForm({ ...editAssForm, classLevel: e.target.value as GradeLevel })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white"
+              >
+                {GRADE_LEVELS.map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {lvl}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Stream</label>
+              <input
+                type="text"
+                placeholder="e.g. East"
+                value={editAssForm.stream}
+                onChange={(e) => setEditAssForm({ ...editAssForm, stream: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="font-semibold text-slate-700">Subject / Learning Area *</label>
+            <select
+              value={editAssForm.subjectId}
+              onChange={(e) => setEditAssForm({ ...editAssForm, subjectId: e.target.value })}
+              className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl bg-white"
+            >
+              {subjects.map((sb) => (
+                <option key={sb.id} value={sb.id}>
+                  {sb.name} ({sb.code})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="font-semibold text-slate-700">Max Score</label>
+              <input
+                type="number"
+                value={editAssForm.maxScore}
+                onChange={(e) => setEditAssForm({ ...editAssForm, maxScore: Number(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="font-semibold text-slate-700">Date</label>
+              <input
+                type="date"
+                value={editAssForm.date}
+                onChange={(e) => setEditAssForm({ ...editAssForm, date: e.target.value })}
+                className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-xl"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3">
+            <Button variant="outline" type="button" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit">
+              Update Assessment
             </Button>
           </div>
         </form>

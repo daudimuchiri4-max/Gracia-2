@@ -368,6 +368,7 @@ export const schoolService = {
       { id: 'sb-math', code: 'MATH', name: 'Mathematics', category: 'CBC Core', levels: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'] },
       { id: 'sb-eng', code: 'ENG', name: 'English Language', category: 'CBC Core', levels: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'] },
       { id: 'sb-kisw', code: 'KISW', name: 'Kiswahili / KSL', category: 'CBC Core', levels: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'] },
+      { id: 'sb-science', code: 'SCI', name: 'Science', category: 'CBC Core', levels: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'] },
       { id: 'sb-sci', code: 'INT-SCI', name: 'Integrated Science & Tech', category: 'CBC Core', levels: ['Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'] },
       { id: 'sb-agr', code: 'AGR-NUT', name: 'Agriculture & Nutrition', category: 'CBC Core', levels: ['Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'] },
       { id: 'sb-cre', code: 'CRE', name: 'Christian Religious Education', category: 'CBC Core', levels: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'] },

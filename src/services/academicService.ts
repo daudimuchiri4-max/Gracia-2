@@ -41,7 +41,28 @@ export const academicService = {
   async getSubjects(schoolId: string): Promise<Subject[]> {
     try {
       const snap = await getDocs(collection(db, 'schools', schoolId, 'subjects'));
-      return snap.docs.map((d) => ({ ...d.data(), id: d.id } as Subject));
+      let subjects = snap.docs.map((d) => ({ ...d.data(), id: d.id } as Subject));
+
+      const hasScience = subjects.some((s) => s.name.toLowerCase() === 'science');
+      if (!hasScience && schoolId) {
+        const scienceSub: Omit<Subject, 'id' | 'schoolId'> = {
+          code: 'SCI',
+          name: 'Science',
+          category: 'CBC Core',
+          levels: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9'],
+        };
+        const colRef = collection(db, 'schools', schoolId, 'subjects');
+        const newDoc = doc(colRef);
+        const newSubj: Subject = {
+          ...scienceSub,
+          id: newDoc.id,
+          schoolId,
+        };
+        await setDoc(newDoc, cleanForFirestore(newSubj));
+        subjects.push(newSubj);
+      }
+
+      return subjects;
     } catch (err) {
       console.error('Error fetching subjects:', err);
       return [];
