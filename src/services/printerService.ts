@@ -72,6 +72,29 @@ export interface DailyAttendanceReportData {
   notes?: string;
 }
 
+export interface ClassAttendanceReportData {
+  date: string;
+  classLevel: string;
+  stream: string;
+  academicYear?: string;
+  term?: string;
+  totalEnrolled: number;
+  totalPresent: number;
+  totalAbsent: number;
+  totalLate: number;
+  totalExcused: number;
+  attendanceRate: number;
+  students: {
+    admissionNumber: string;
+    studentName: string;
+    gender: 'MALE' | 'FEMALE';
+    status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'SICK' | 'NOT_RECORDED';
+    parentName?: string;
+    parentPhone?: string;
+    remarks?: string;
+  }[];
+}
+
 export interface ThermalReceiptData {
   receiptNumber: string;
   date: string | Date;
@@ -2295,6 +2318,158 @@ class PrinterService {
     `;
 
     this.printViaIframe(html, 'A4', `Daily-Attendance-Diary-${reportData.date}`);
+  }
+
+  /**
+   * Print Class-Specific Attendance Register (Present & Absent Roster)
+   */
+  public async printClassAttendanceReport(reportData: ClassAttendanceReportData, school: School | null): Promise<void> {
+    const qrDataUrl = await this.generateVerificationQRCode(`GRACIA-CLASS-ATTENDANCE: ${reportData.classLevel} ${reportData.stream} - ${reportData.date}`);
+    const schoolName = school?.name || 'GRACIA LEARNING CENTRE';
+    const schoolMotto = school?.motto || 'Nurturing Potential, Inspiring Excellence';
+    const schoolAddress = school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi, Kenya';
+
+    const formattedDate = new Date(reportData.date).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const presentStudents = reportData.students.filter(s => s.status === 'PRESENT' || s.status === 'LATE');
+    const absentStudents = reportData.students.filter(s => s.status === 'ABSENT' || s.status === 'EXCUSED' || s.status === 'SICK' || s.status === 'NOT_RECORDED');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Class Attendance - ${reportData.classLevel} ${reportData.stream} (${reportData.date})</title>
+        <meta charset="utf-8">
+        <style>
+          @page { size: A4 portrait; margin: 12mm; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; background: #fff; font-size: 11.5px; line-height: 1.4; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+          .school-title { font-size: 19px; font-weight: 900; text-transform: uppercase; color: #0f172a; }
+          .school-meta { font-size: 10.5px; color: #475569; }
+          .badge { background: #0f172a; color: #fff; padding: 4px 10px; font-size: 11px; font-weight: bold; border-radius: 4px; text-transform: uppercase; }
+          
+          .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; background: #f8fafc; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; margin-bottom: 14px; }
+          .meta-item label { font-size: 9.5px; font-weight: bold; color: #64748b; text-transform: uppercase; display: block; }
+          .meta-item span { font-size: 12px; font-weight: bold; color: #0f172a; }
+
+          .section-title { font-size: 12px; font-weight: 800; background: #1e3a8a; color: #fff; padding: 6px 10px; border-radius: 4px; margin: 14px 0 8px 0; text-transform: uppercase; letter-spacing: 0.5px; }
+          .section-title.absent { background: #991b1b; }
+
+          table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11px; }
+          th { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; font-weight: 700; }
+          td { border: 1px solid #e2e8f0; padding: 6px 8px; }
+          tr:nth-child(even) { background: #f8fafc; }
+
+          .status-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 9.5px; text-transform: uppercase; }
+          .status-PRESENT { background: #dcfce7; color: #166534; }
+          .status-LATE { background: #fef3c7; color: #92400e; }
+          .status-ABSENT { background: #fee2e2; color: #991b1b; }
+          .status-EXCUSED { background: #e0f2fe; color: #0369a1; }
+          .status-SICK { background: #f3e8ff; color: #6b21a8; }
+          .status-NOT_RECORDED { background: #f1f5f9; color: #64748b; }
+
+          .footer { margin-top: 25px; display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #cbd5e1; padding-top: 12px; }
+          .stamp { border: 2px dashed #94a3b8; width: 120px; height: 55px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #94a3b8; font-weight: bold; text-align: center; text-transform: uppercase; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <img src="${this.getSchoolLogo(school)}" alt="School Crest" style="width: 55px; height: 55px; object-fit: contain;" />
+            <div>
+              <div class="school-title">${schoolName}</div>
+              <div class="school-meta" style="font-weight: bold; color: #ea580c;">${schoolMotto}</div>
+              <div class="school-meta">${schoolAddress} • Tel: ${school?.phone || '+254 700 000 000'}</div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div class="badge">CLASS ATTENDANCE REGISTER</div>
+            <div style="font-size: 11px; font-weight: bold; margin-top: 4px;">${formattedDate}</div>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-item"><label>Class Level</label><span>${reportData.classLevel}</span></div>
+          <div class="meta-item"><label>Stream / Wing</label><span>${reportData.stream}</span></div>
+          <div class="meta-item"><label>Total Enrolled</label><span>${reportData.totalEnrolled} Learners</span></div>
+          <div class="meta-item"><label>Attendance Rate</label><span style="color: ${reportData.attendanceRate >= 90 ? '#166534' : '#b91c1c'};">${reportData.attendanceRate.toFixed(1)}%</span></div>
+        </div>
+
+        <!-- Present Students Section -->
+        <div class="section-title">1. Present Learners (${presentStudents.length} Verified)</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 10%;">#</th>
+              <th style="width: 18%;">Admission No</th>
+              <th style="width: 32%;">Learner Full Name</th>
+              <th style="width: 15%;">Gender</th>
+              <th style="width: 15%;">Status</th>
+              <th style="width: 10%;">Remarks</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${presentStudents.length === 0 ? `<tr><td colspan="6" style="text-align: center; color: #64748b; font-style: italic;">No present learners recorded for this class yet.</td></tr>` : presentStudents.map((s, idx) => `
+              <tr>
+                <td style="text-align: center; color: #64748b;">${idx + 1}</td>
+                <td style="font-family: monospace; font-weight: bold;">${s.admissionNumber}</td>
+                <td style="font-weight: 600;">${s.studentName}</td>
+                <td>${s.gender}</td>
+                <td><span class="status-badge status-${s.status}">${s.status}</span></td>
+                <td style="font-size: 10px; color: #475569;">${s.remarks || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <!-- Absent Students Section -->
+        <div class="section-title absent">2. Absent / Excused / Unmarked Learners (${absentStudents.length})</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 10%;">#</th>
+              <th style="width: 16%;">Admission No</th>
+              <th style="width: 26%;">Learner Full Name</th>
+              <th style="width: 12%;">Gender</th>
+              <th style="width: 16%;">Status</th>
+              <th style="width: 20%;">Parent Contact</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${absentStudents.length === 0 ? `<tr><td colspan="6" style="text-align: center; color: #166534; font-style: italic; font-weight: bold;">✓ Excellent! Zero absentees recorded in this class today.</td></tr>` : absentStudents.map((s, idx) => `
+              <tr>
+                <td style="text-align: center; color: #64748b;">${idx + 1}</td>
+                <td style="font-family: monospace; font-weight: bold;">${s.admissionNumber}</td>
+                <td style="font-weight: 600; color: #991b1b;">${s.studentName}</td>
+                <td>${s.gender}</td>
+                <td><span class="status-badge status-${s.status}">${s.status}</span></td>
+                <td style="font-size: 10.5px; font-family: monospace;">${s.parentPhone || s.parentName || 'Not Provided'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <div>
+            <div style="font-size: 10.5px; color: #475569; font-weight: bold;">Class Teacher / Duty Master Verification Sign: ___________________________</div>
+            <div style="font-size: 9.5px; color: #94a3b8; margin-top: 4px;">Kenya Ministry of Education CBC Daily Attendance Standard</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            ${qrDataUrl ? `<img src="${qrDataUrl}" style="width: 50px; height: 50px; object-fit: contain;" alt="QR" />` : ''}
+            <div class="stamp">Official Class Stamp</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    this.printA4Document(html, `Class_Attendance_${reportData.classLevel}_${reportData.stream}_${reportData.date}`);
   }
 
   /**

@@ -153,7 +153,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           {
             title: 'Operations & Finance',
             items: [
-              { id: 'ATTENDANCE', label: 'Daily Attendance Roll', icon: <CalendarCheck className="w-4 h-4" /> },
+              { id: 'ATTENDANCE', label: 'Attendance & Discipline', icon: <CalendarCheck className="w-4 h-4" /> },
               { id: 'FEES', label: 'Fee Invoicing & Receipts', icon: <DollarSign className="w-4 h-4" /> },
               { id: 'POS', label: 'Canteen & Store POS', icon: <ShoppingCart className="w-4 h-4" /> },
               { id: 'INVENTORY', label: 'Inventory & Assets', icon: <Package className="w-4 h-4" /> },

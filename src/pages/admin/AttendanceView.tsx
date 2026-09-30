@@ -1232,6 +1232,70 @@ export const AttendanceView: React.FC = () => {
     showToast(`Generating printable Daily Attendance Diary for ${reportDate}...`, 'info');
   };
 
+  const handlePrintClassAttendanceReport = () => {
+    const classStudents = allSchoolStudents.filter(
+      (s) => s.currentClass === selectedClass && (selectedStream === 'ALL' || s.stream === selectedStream)
+    );
+    const termRecords = dailyAttendanceRecords.filter(
+      (r) => r.classLevel === selectedClass && (selectedStream === 'ALL' || r.stream === selectedStream)
+    );
+
+    const statusMap: Record<string, { status: any; remarks?: string }> = {};
+    termRecords.forEach((r) => {
+      r.entries.forEach((e) => {
+        statusMap[e.studentId] = { status: e.status, remarks: e.remarks };
+        if (e.admissionNumber) {
+          statusMap[e.admissionNumber] = { status: e.status, remarks: e.remarks };
+        }
+      });
+    });
+
+    let present = 0;
+    let absent = 0;
+    let late = 0;
+    let excused = 0;
+
+    const mappedStudents = classStudents.map((st) => {
+      const entry = statusMap[st.id] || statusMap[st.admissionNumber];
+      const stat = entry ? entry.status : 'NOT_RECORDED';
+      if (stat === 'PRESENT') present++;
+      else if (stat === 'LATE') {
+        late++;
+        present++;
+      } else if (stat === 'EXCUSED' || stat === 'SICK') excused++;
+      else absent++;
+
+      return {
+        admissionNumber: st.admissionNumber,
+        studentName: st.fullName,
+        gender: st.gender,
+        status: stat,
+        parentName: st.parentName,
+        parentPhone: st.parentPhone,
+        remarks: entry?.remarks,
+      };
+    });
+
+    const enrolled = classStudents.length;
+    const attendanceRate = enrolled > 0 ? (present / enrolled) * 100 : 0;
+
+    const classReportData = {
+      date: reportDate || selectedDate || new Date().toISOString().split('T')[0],
+      classLevel: selectedClass,
+      stream: selectedStream === 'ALL' ? 'All Streams' : selectedStream,
+      totalEnrolled: enrolled,
+      totalPresent: present,
+      totalAbsent: absent,
+      totalLate: late,
+      totalExcused: excused,
+      attendanceRate,
+      students: mappedStudents,
+    };
+
+    printerService.printClassAttendanceReport(classReportData, school);
+    showToast(`Generating class attendance report for ${selectedClass} (${selectedStream})...`, 'info');
+  };
+
   const handleExportDailyCsv = () => {
     const headers = [
       'AdmNo',
@@ -2045,6 +2109,15 @@ export const AttendanceView: React.FC = () => {
                 Mark All Absent
               </button>
               <Button
+                variant="outline"
+                size="sm"
+                icon={<Printer className="w-4 h-4 text-blue-900" />}
+                onClick={handlePrintClassAttendanceReport}
+                className="cursor-pointer bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100"
+              >
+                Print Class Roster
+              </Button>
+              <Button
                 variant="primary"
                 size="sm"
                 icon={<Save className="w-4 h-4" />}
@@ -2376,6 +2449,15 @@ export const AttendanceView: React.FC = () => {
                   onClick={handleExportDailyCsv}
                 >
                   Export CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="bg-indigo-50 text-indigo-900 border-indigo-200 hover:bg-indigo-100 font-bold"
+                  icon={<Printer className="w-4 h-4 text-indigo-900" />}
+                  onClick={handlePrintClassAttendanceReport}
+                >
+                  Print Class Report ({selectedClass})
                 </Button>
                 <Button
                   variant="primary"
