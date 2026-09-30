@@ -942,9 +942,8 @@ export const feeService = {
       const totalInvoiced = studentInvoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
       const totalPaid = studentPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-      const calculatedBalance = totalInvoiced > 0 || totalPaid > 0
-        ? Math.max(0, totalInvoiced - totalPaid)
-        : (student.totalBalance || 0);
+      const initialBalance = totalInvoiced > 0 ? totalInvoiced : (student.totalBalance || 0);
+      const calculatedBalance = Math.max(0, initialBalance - totalPaid);
 
       await studentService.updateStudent(schoolId, student.id, {
         totalBalance: calculatedBalance,

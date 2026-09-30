@@ -2436,6 +2436,107 @@ class PrinterService {
   }
 
   /**
+   * Print Termly Outstanding Balance Report (Term 1, Term 2, Term 3)
+   */
+  public async printTermlyArrearsReport(termlySummary: { term: string; invoiced: number; collected: number; arrears: number }[], school: School | null): Promise<void> {
+    const qrDataUrl = await this.generateVerificationQRCode(`GRACIA-TERMLY-ARREARS-REPORT`);
+    const schoolName = school?.name || 'Gracia Learning Centre';
+    const schoolMotto = school?.motto || '— I can! I will! —';
+    const schoolAddress = school?.address || 'Mariru Park, Kasarani Mwiki, Nairobi, Kenya';
+    const currency = school?.currencySymbol || 'KSh';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Termly Outstanding Balance Report</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #0f172a; background: #fff; line-height: 1.5; font-size: 12px; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+          .school-title { font-size: 20px; font-weight: 900; text-transform: uppercase; color: #0f172a; }
+          .school-meta { font-size: 11px; color: #475569; }
+          .title { font-size: 14px; font-weight: 800; background: #f1f5f9; padding: 8px 12px; border-radius: 6px; text-transform: uppercase; margin-bottom: 15px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+          th { background: #0f172a; color: #fff; padding: 10px; text-align: left; font-weight: bold; text-transform: uppercase; }
+          td { border: 1px solid #e2e8f0; padding: 10px; }
+          tr:nth-child(even) { background: #f8fafc; }
+          .total-row { background: #eff6ff !important; font-weight: bold; font-size: 13px; }
+          .footer { margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #cbd5e1; padding-top: 15px; }
+          .stamp { border: 2px dashed #94a3b8; width: 130px; height: 65px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 9.5px; color: #94a3b8; font-weight: bold; text-align: center; text-transform: uppercase; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <img src="${this.getSchoolLogo(school)}" alt="School Crest" style="width: 60px; height: 60px; object-fit: contain;" />
+            <div>
+              <div class="school-title">${schoolName}</div>
+              <div class="school-meta" style="font-weight: bold; color: #ea580c;">${schoolMotto}</div>
+              <div class="school-meta">${schoolAddress} • Tel: ${school?.phone || '+254 722 000 123'}</div>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="background: #0f172a; color: #fff; padding: 4px 10px; font-size: 11px; font-weight: bold; border-radius: 4px;">FINANCIAL REPORT</div>
+            <div style="font-size: 11px; font-weight: bold; margin-top: 4px;">Termly Arrears & Collections</div>
+          </div>
+        </div>
+
+        <div class="title">Termly Outstanding Balance Breakdown (Term 1, Term 2, Term 3)</div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Academic Term</th>
+              <th style="text-align: right;">Total Invoiced (${currency})</th>
+              <th style="text-align: right;">Total Collected (${currency})</th>
+              <th style="text-align: right;">Outstanding Balance (${currency})</th>
+              <th style="text-align: center;">Collection Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${termlySummary.map(t => {
+              const rate = t.invoiced > 0 ? Math.round((t.collected / t.invoiced) * 100) : 100;
+              return `
+                <tr>
+                  <td style="font-weight: bold; color: #1e3a8a;">${t.term}</td>
+                  <td style="text-align: right; font-family: monospace;">${currency} ${t.invoiced.toLocaleString()}</td>
+                  <td style="text-align: right; font-family: monospace; color: #166534;">${currency} ${t.collected.toLocaleString()}</td>
+                  <td style="text-align: right; font-family: monospace; font-weight: bold; color: ${t.arrears > 0 ? '#b91c1c' : '#166534'};">${currency} ${t.arrears.toLocaleString()}</td>
+                  <td style="text-align: center; font-weight: bold;">${rate}%</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr class="total-row">
+              <td>TOTAL ACADEMIC YEAR</td>
+              <td style="text-align: right; font-family: monospace;">${currency} ${termlySummary.reduce((s, t) => s + t.invoiced, 0).toLocaleString()}</td>
+              <td style="text-align: right; font-family: monospace; color: #166534;">${currency} ${termlySummary.reduce((s, t) => s + t.collected, 0).toLocaleString()}</td>
+              <td style="text-align: right; font-family: monospace; color: #b91c1c;">${currency} ${termlySummary.reduce((s, t) => s + t.arrears, 0).toLocaleString()}</td>
+              <td style="text-align: center;">${Math.round((termlySummary.reduce((s, t) => s + t.collected, 0) / (termlySummary.reduce((s, t) => s + t.invoiced, 0) || 1)) * 100)}%</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <div>
+            <div style="font-size: 10.5px; color: #475569; font-weight: bold;">Generated by Gracia School ERP • Finance Department</div>
+            <div style="font-size: 9.5px; color: #94a3b8; margin-top: 2px;">Report Date: ${new Date().toLocaleString('en-GB')}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            ${qrDataUrl ? `<img src="${qrDataUrl}" style="width: 55px; height: 55px; object-fit: contain;" alt="Verification QR" />` : ''}
+            <div class="stamp">
+              Accounts Office Stamp
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    this.printA4Document(html, 'Termly_Outstanding_Balance_Report');
+  }
+
+  /**
    * Helper: Print HTML via hidden iframe without disturbing the active screen
    */
   private printViaIframe(htmlContent: string, format: string, title?: string): void {

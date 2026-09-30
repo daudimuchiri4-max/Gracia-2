@@ -131,6 +131,34 @@ export const ReportsView: React.FC = () => {
     downloadCSV('cbc_assessment_scores', headers, rows);
   };
 
+  const terms = ['Term 1', 'Term 2', 'Term 3'] as const;
+  const termlySummary = terms.map((term) => {
+    const termInvoices = invoices.filter((i) => i.term === term);
+    const termPayments = payments.filter((p) => p.term === term);
+    const invoiced = termInvoices.reduce((sum, i) => sum + (i.totalAmount || 0), 0);
+    const collected = termPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const arrears = Math.max(0, invoiced - collected);
+    return { term, invoiced, collected, arrears };
+  });
+
+  const exportTermlyArrearsCSV = () => {
+    const headers = ['Term', 'TotalInvoiced', 'TotalCollected', 'OutstandingArrears', 'CollectionRate'];
+    const rows = termlySummary.map((t) => {
+      const rate = t.invoiced > 0 ? Math.round((t.collected / t.invoiced) * 100) : 100;
+      return [t.term, t.invoiced.toString(), t.collected.toString(), t.arrears.toString(), `${rate}%`];
+    });
+    downloadCSV('termly_outstanding_balance_report', headers, rows);
+  };
+
+  const handlePrintTermlyReport = async () => {
+    try {
+      await printerService.printTermlyArrearsReport(termlySummary, school);
+      showToast('Termly Outstanding Report print dialog opened!', 'success');
+    } catch (e: any) {
+      showToast('Error printing termly report: ' + e.message, 'error');
+    }
+  };
+
   const generateDailyAttendanceData = async (targetDate: string) => {
     if (!school?.id) return null;
     const records = await attendanceService.getAttendanceRecords(school.id, { date: targetDate });
@@ -483,6 +511,57 @@ export const ReportsView: React.FC = () => {
           >
             Export CBC Scores (CSV)
           </Button>
+        </div>
+
+        {/* Termly Outstanding Balance Report */}
+        <div className="bg-white rounded-2xl p-6 border-2 border-indigo-200 shadow-xs space-y-4 flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-indigo-900 text-white rounded-xl shadow-xs">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-900">Termly Outstanding Balance</h3>
+                <p className="text-xs text-indigo-900 font-semibold">Term 1, Term 2, Term 3 Arrears</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Detailed financial breakdown of total invoiced amounts, collections, and outstanding arrears categorized by academic term.
+            </p>
+
+            <div className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[11px] font-bold text-slate-700">
+              {termlySummary.map((t) => (
+                <div key={t.term} className="flex justify-between">
+                  <span>{t.term}:</span>
+                  <span className={t.arrears > 0 ? 'text-rose-600 font-mono' : 'text-emerald-700 font-mono'}>
+                    {school?.currencySymbol || 'KSh'} {t.arrears.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-slate-100">
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full justify-center bg-indigo-900 hover:bg-indigo-800"
+              icon={<Printer className="w-4 h-4" />}
+              onClick={handlePrintTermlyReport}
+            >
+              Print Termly Report (A4)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full justify-center"
+              icon={<Download className="w-4 h-4" />}
+              onClick={exportTermlyArrearsCSV}
+            >
+              Export Termly CSV
+            </Button>
+          </div>
         </div>
       </div>
     </div>

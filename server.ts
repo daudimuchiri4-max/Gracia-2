@@ -469,9 +469,18 @@ async function startServer() {
     const rootIndexPath = path.join(process.cwd(), 'index.html');
 
     app.use(express.static(distPath));
+    app.use(express.static(path.join(process.cwd(), 'public')));
+
+    app.get(['/', '/index.html'], (req: Request, res: Response) => {
+      if (fs.existsSync(distIndexPath)) {
+        return res.sendFile(distIndexPath);
+      } else if (fs.existsSync(rootIndexPath)) {
+        return res.sendFile(rootIndexPath);
+      }
+      res.status(404).send('Application build not found.');
+    });
 
     // Client-Side SPA Fallback: Map all unmatched GET routes to index.html
-    // Handles /dashboard, /login, /admin, /teacher, /parent, /learner, /admissions, /fees, /students, etc.
     app.get('*', (req: Request, res: Response) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
         return res.status(404).json({ error: 'API route not found' });
