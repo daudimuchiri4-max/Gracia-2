@@ -53,9 +53,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     async function init() {
       try {
-        const sch = await schoolService.ensureDefaultSchool();
+        const [sch, redirectProfile] = await Promise.all([
+          schoolService.ensureDefaultSchool(),
+          authService.handleRedirectResult(),
+        ]);
         if (mounted && sch) {
           setSchool(sch);
+        }
+        if (mounted && redirectProfile) {
+          updateAndPersistUser(redirectProfile);
         }
       } catch (err) {
         console.error('Init school error:', err);

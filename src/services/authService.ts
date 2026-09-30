@@ -8,6 +8,8 @@ import {
   sendPasswordResetEmail,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -16,11 +18,7 @@ import { DEFAULT_SCHOOL_ID } from './schoolService';
 import { cleanForFirestore } from '../utils/firestoreHelper';
 
 export const authService = {
-  async loginWithGoogle(): Promise<UserProfile> {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    const cred = await signInWithPopup(auth, provider);
-    const user = cred.user;
+  async syncGoogleUserProfile(user: FirebaseUser): Promise<UserProfile> {
     const docRef = doc(db, 'users', user.uid);
     const snap = await getDoc(docRef);
 
@@ -52,6 +50,41 @@ export const authService = {
     };
     await setDoc(docRef, cleanForFirestore(newProfile));
     return newProfile;
+  },
+
+  async handleRedirectResult(): Promise<UserProfile | null> {
+    try {
+      const cred = await getRedirectResult(auth);
+      if (!cred || !cred.user) return null;
+      return await this.syncGoogleUserProfile(cred.user);
+    } catch (err) {
+      console.warn('Redirect result check notice:', err);
+      return null;
+    }
+  },
+
+  async loginWithGoogle(useRedirectFallback = true): Promise<UserProfile> {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try {
+      const cred = await signInWithPopup(auth, provider);
+      return await this.syncGoogleUserProfile(cred.user);
+    } catch (err: any) {
+      if (
+        (err?.code === 'auth/popup-blocked' || err?.message?.includes('popup-blocked')) &&
+        useRedirectFallback
+      ) {
+        console.warn('Popup blocked, falling back to signInWithRedirect...');
+        try {
+          await signInWithRedirect(auth, provider);
+          return new Promise(() => {}); // awaiting full page redirect
+        } catch (redirectErr) {
+          console.error('Redirect sign-in error:', redirectErr);
+          throw new Error('Your browser blocked the sign-in window. Please enable popups in your browser or sign in using your portal credentials below.');
+        }
+      }
+      throw err;
+    }
   },
 
   async loginAnonymously(): Promise<FirebaseUser | null> {

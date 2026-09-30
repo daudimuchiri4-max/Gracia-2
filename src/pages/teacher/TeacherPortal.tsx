@@ -29,6 +29,11 @@ import {
   Scan,
   Camera,
   CheckCircle2,
+  Trash2,
+  Edit3,
+  Volume2,
+  Volume1,
+  VolumeX,
 } from 'lucide-react';
 
 export const TeacherPortal: React.FC = () => {
@@ -46,6 +51,7 @@ export const TeacherPortal: React.FC = () => {
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [markMap, setMarkMap] = useState<Record<string, { score: number; comment: string }>>({});
   const [savingMarks, setSavingMarks] = useState(false);
+  const [selectedTerm, setSelectedTerm] = useState<'Term 1' | 'Term 2' | 'Term 3'>('Term 1');
 
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [lastScanned, setLastScanned] = useState<{ id: string; time: number } | null>(null);
@@ -53,6 +59,46 @@ export const TeacherPortal: React.FC = () => {
   const isProcessingScanRef = useRef<boolean>(false);
   const attendanceMapRef = useRef(attendanceMap);
   const studentsRef = useRef(students);
+
+  // Welcome Sound Volume State (persisted in localStorage)
+  const [welcomeVolume, setWelcomeVolume] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('teacher_welcome_volume');
+      return saved !== null ? Math.max(0, Math.min(100, Number(saved))) : 85;
+    } catch {
+      return 85;
+    }
+  });
+  const [isSoundMuted, setIsSoundMuted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('teacher_welcome_muted') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleVolumeChange = (newVol: number) => {
+    setWelcomeVolume(newVol);
+    try {
+      localStorage.setItem('teacher_welcome_volume', newVol.toString());
+    } catch {}
+    if (newVol > 0 && isSoundMuted) {
+      setIsSoundMuted(false);
+      try {
+        localStorage.setItem('teacher_welcome_muted', 'false');
+      } catch {}
+    }
+  };
+
+  const toggleSoundMute = () => {
+    setIsSoundMuted((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('teacher_welcome_muted', next.toString());
+      } catch {}
+      return next;
+    });
+  };
 
   useEffect(() => {
     attendanceMapRef.current = attendanceMap;
@@ -62,7 +108,11 @@ export const TeacherPortal: React.FC = () => {
     studentsRef.current = students;
   }, [students]);
 
-  const playWelcomeSound = (studentName: string) => {
+  const playWelcomeSound = (studentName: string, overrideVol?: number) => {
+    const vol = overrideVol !== undefined ? overrideVol : (isSoundMuted ? 0 : welcomeVolume);
+    if (vol <= 0) return;
+    const volFraction = vol / 100;
+
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContextClass) {
@@ -72,12 +122,12 @@ export const TeacherPortal: React.FC = () => {
         osc.type = 'sine';
         osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
         osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.12); // A5
-        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        gain.gain.setValueAtTime(0.35 * volFraction, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.45);
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.start();
-        osc.stop(audioCtx.currentTime + 0.4);
+        osc.stop(audioCtx.currentTime + 0.45);
         setTimeout(() => {
           try {
             if (audioCtx.state !== 'closed') {
@@ -93,16 +143,27 @@ export const TeacherPortal: React.FC = () => {
     try {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel(); // Stop any ongoing speech
-        const firstName = studentName.trim().split(' ')[0];
+        const firstName = studentName.trim().split(' ')[0] || studentName;
         const utterance = new SpeechSynthesisUtterance(`Welcome to Gracia Learning Centre, ${firstName}`);
         utterance.rate = 1.0;
-        utterance.pitch = 1.1;
+        utterance.pitch = 1.05;
+        utterance.volume = Math.max(0.05, Math.min(1.0, volFraction));
         utterance.onerror = () => {};
         window.speechSynthesis.speak(utterance);
       }
     } catch (e) {
       // Speech synthesis fallback
     }
+  };
+
+  const testAudio = (targetVol?: number) => {
+    const vol = targetVol !== undefined ? targetVol : (isSoundMuted ? 0 : welcomeVolume);
+    if (vol <= 0) {
+      showToast('Sound is muted (Volume 0%). Slide volume up or unmute to test welcome audio.', 'info');
+      return;
+    }
+    playWelcomeSound('Learner', vol);
+    showToast(`🔊 Testing welcome audio at ${vol}% volume`, 'info');
   };
 
   const handleScanSuccess = useCallback((code: string) => {
@@ -274,7 +335,7 @@ export const TeacherPortal: React.FC = () => {
       for (const std of students) {
         const m = markMap[std.id] || { score: 75, comment: '' };
         await assessmentService.saveResult(school!.id, {
-          assessmentId: `ass_${selectedClass}_${selectedSubjectId}`,
+          assessmentId: `ass_${selectedClass}_${selectedStream}_${selectedSubjectId}_${selectedTerm.replace(/\s+/g, '')}`,
           studentId: std.id,
           studentName: std.fullName,
           admissionNumber: std.admissionNumber,
@@ -284,9 +345,10 @@ export const TeacherPortal: React.FC = () => {
           score: m.score,
           maxScore: 100,
           teacherComment: m.comment,
+          term: selectedTerm,
         });
       }
-      showToast('CBC competency evaluation saved!', 'success');
+      showToast(`CBC competency evaluation saved for ${selectedTerm}!`, 'success');
     } catch (e: any) {
       showToast('Error saving marks: ' + e.message, 'error');
     } finally {
@@ -483,34 +545,93 @@ export const TeacherPortal: React.FC = () => {
           </div>
 
           {activeTab === 'MARKS' && (
-            <div>
-              <label className="text-[10px] font-bold uppercase text-slate-400 block">Subject Area</label>
-              <select
-                value={selectedSubjectId}
-                onChange={(e) => setSelectedSubjectId(e.target.value)}
-                className="text-xs font-bold text-slate-900 border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 mt-0.5"
-              >
-                {subjects.map((sb) => (
-                  <option key={sb.id} value={sb.id}>
-                    {sb.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-400 block">Academic Term</label>
+                <select
+                  value={selectedTerm}
+                  onChange={(e) => setSelectedTerm(e.target.value as any)}
+                  className="text-xs font-bold text-blue-900 border border-slate-200 rounded-xl px-3 py-1.5 bg-blue-50/50 mt-0.5"
+                >
+                  <option value="Term 1">Term 1</option>
+                  <option value="Term 2">Term 2</option>
+                  <option value="Term 3">Term 3</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase text-slate-400 block">Subject Area</label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => setSelectedSubjectId(e.target.value)}
+                  className="text-xs font-bold text-slate-900 border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 mt-0.5"
+                >
+                  {subjects.map((sb) => (
+                    <option key={sb.id} value={sb.id}>
+                      {sb.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {activeTab === 'ATTENDANCE' && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-blue-900 border-blue-200 bg-blue-50/70 hover:bg-blue-100 font-bold"
-              icon={<QrCode className="w-4 h-4 text-blue-900" />}
-              onClick={() => setIsQrScannerOpen(true)}
-            >
-              Scan Student ID / QR
-            </Button>
+            <>
+              {/* Welcome Sound Volume Widget */}
+              <div className="flex items-center gap-2 bg-slate-100/90 hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 transition-colors">
+                <button
+                  type="button"
+                  onClick={toggleSoundMute}
+                  title={isSoundMuted || welcomeVolume === 0 ? 'Unmute Welcome Sound' : 'Mute Welcome Sound'}
+                  className="text-slate-600 hover:text-blue-900 transition-colors cursor-pointer"
+                >
+                  {isSoundMuted || welcomeVolume === 0 ? (
+                    <VolumeX className="w-4 h-4 text-rose-500" />
+                  ) : welcomeVolume <= 40 ? (
+                    <Volume1 className="w-4 h-4 text-blue-700" />
+                  ) : (
+                    <Volume2 className="w-4 h-4 text-emerald-600" />
+                  )}
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-500">Vol:</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={isSoundMuted ? 0 : welcomeVolume}
+                    onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                    className="w-16 sm:w-20 h-1.5 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-blue-900"
+                    title={`Welcome sound volume: ${isSoundMuted ? 0 : welcomeVolume}%`}
+                  />
+                  <span className="text-[10px] font-mono font-bold text-slate-700 w-8 text-right">
+                    {isSoundMuted ? '0%' : `${welcomeVolume}%`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => testAudio()}
+                  title="Test Welcome Sound and Voice"
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white hover:bg-slate-50 text-blue-900 border border-slate-200 shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  Test 🔊
+                </button>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-blue-900 border-blue-200 bg-blue-50/70 hover:bg-blue-100 font-bold"
+                icon={<QrCode className="w-4 h-4 text-blue-900" />}
+                onClick={() => setIsQrScannerOpen(true)}
+              >
+                Scan Student ID / QR
+              </Button>
+            </>
           )}
           {activeTab === 'ATTENDANCE' ? (
             <Button
@@ -666,6 +787,11 @@ export const TeacherPortal: React.FC = () => {
         onClose={() => setIsQrScannerOpen(false)}
         students={students}
         onScanSuccess={handleScanSuccess}
+        volume={welcomeVolume}
+        onVolumeChange={handleVolumeChange}
+        isMuted={isSoundMuted}
+        onToggleMute={toggleSoundMute}
+        onTestSound={testAudio}
       />
     </div>
   );
@@ -676,6 +802,11 @@ interface QrScannerModalProps {
   onClose: () => void;
   students: Student[];
   onScanSuccess: (code: string) => void;
+  volume: number;
+  onVolumeChange: (vol: number) => void;
+  isMuted: boolean;
+  onToggleMute: () => void;
+  onTestSound: (vol?: number) => void;
 }
 
 const QrScannerModal: React.FC<QrScannerModalProps> = ({
@@ -683,37 +814,14 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
   onClose,
   students,
   onScanSuccess,
+  volume,
+  onVolumeChange,
+  isMuted,
+  onToggleMute,
+  onTestSound,
 }) => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
-
-  const testAudio = () => {
-    try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContextClass) {
-        const audioCtx = new AudioContextClass();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.5);
-      }
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance('Audio and microphone check successful. Gracia Learning Centre.');
-        utter.rate = 1.0;
-        window.speechSynthesis.speak(utter);
-      }
-    } catch (e) {
-      console.warn('Audio test notice:', e);
-    }
-  };
 
   useEffect(() => {
     let html5QrCode: Html5Qrcode | null = null;
@@ -791,21 +899,57 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
         </div>
 
         <div className="space-y-4">
-          <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center justify-between gap-3">
+          <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-blue-900 text-white flex items-center justify-center shrink-0">
                 <Camera className="w-4 h-4" />
               </div>
               <p className="text-xs text-blue-900 font-medium">
-                {cameraActive ? '🟢 Camera active & scanning QR...' : cameraError ? '🟡 Using Instant 1-Tap Roster Simulation (Camera Sandboxed)' : '📷 Initializing camera stream...'}
+                {cameraActive ? '🟢 Camera active & scanning QR...' : cameraError ? '🟡 Using Instant 1-Tap Simulation' : '📷 Initializing camera stream...'}
               </p>
             </div>
-            <button
-              onClick={testAudio}
-              className="px-3 py-1.5 bg-indigo-900 text-white text-[11px] font-bold rounded-xl shadow-xs hover:bg-indigo-800 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
-            >
-              🔊 Test Sound
-            </button>
+
+            {/* Modal Live Volume Control */}
+            <div className="flex items-center gap-2 bg-white/90 px-3 py-1.5 rounded-xl border border-blue-200 shrink-0">
+              <button
+                type="button"
+                onClick={onToggleMute}
+                title={isMuted || volume === 0 ? 'Unmute Welcome Sound' : 'Mute Welcome Sound'}
+                className="text-slate-600 hover:text-blue-900 transition-colors cursor-pointer"
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="w-4 h-4 text-rose-500" />
+                ) : volume <= 40 ? (
+                  <Volume1 className="w-4 h-4 text-blue-700" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-emerald-600" />
+                )}
+              </button>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-500">Vol:</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={isMuted ? 0 : volume}
+                  onChange={(e) => onVolumeChange(Number(e.target.value))}
+                  className="w-16 sm:w-20 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-900"
+                  title={`Welcome sound volume: ${isMuted ? 0 : volume}%`}
+                />
+                <span className="text-[10px] font-mono font-bold text-slate-700 w-8 text-right">
+                  {isMuted ? '0%' : `${volume}%`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onTestSound()}
+                className="px-2 py-1 bg-indigo-900 text-white text-[11px] font-bold rounded-lg shadow-xs hover:bg-indigo-800 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                title="Test Welcome Sound and Voice Announcement"
+              >
+                🔊 Test
+              </button>
+            </div>
           </div>
 
           {/* Real Camera Viewfinder Container */}
@@ -832,8 +976,12 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
               <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                 Roster Students (Instant 1-Tap Simulation & Audio):
               </label>
-              <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                Sound Enabled 🔊
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                isMuted || volume === 0
+                  ? 'text-rose-600 bg-rose-50 border-rose-200'
+                  : 'text-emerald-600 bg-emerald-50 border-emerald-200'
+              }`}>
+                {isMuted || volume === 0 ? 'Muted 🔇' : `Sound: ${volume}% 🔊`}
               </span>
             </div>
             <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">

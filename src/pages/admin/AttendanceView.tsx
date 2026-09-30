@@ -28,6 +28,7 @@ import {
   FlipHorizontal,
   Upload,
   Volume2,
+  Volume1,
   VolumeX,
   RefreshCw,
   ExternalLink,
@@ -128,6 +129,28 @@ export const AttendanceView: React.FC = () => {
   const [scanFeed, setScanFeed] = useState<LiveScanEvent[]>([]);
   const [scanFlash, setScanFlash] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [soundVolume, setSoundVolume] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('attendance_welcome_volume');
+      return saved !== null ? Math.max(0, Math.min(100, Number(saved))) : 85;
+    } catch {
+      return 85;
+    }
+  });
+
+  const handleSoundVolumeChange = (newVol: number) => {
+    setSoundVolume(newVol);
+    try {
+      localStorage.setItem('attendance_welcome_volume', newVol.toString());
+    } catch {}
+    if (newVol > 0 && !soundEnabled) {
+      setSoundEnabled(true);
+    }
+  };
+
+  const toggleSoundEnabled = () => {
+    setSoundEnabled((prev) => !prev);
+  };
   const [isProcessingFile, setIsProcessingFile] = useState<boolean>(false);
   const [testStudentId, setTestStudentId] = useState<string>('');
   const [previewBadgeStudent, setPreviewBadgeStudent] = useState<Student | null>(null);
@@ -423,10 +446,11 @@ export const AttendanceView: React.FC = () => {
 
   // Authentic Supermarket POS & Thermo Scanner Piezo Audio Feedback
   const playBeep = (success: boolean) => {
-    if (!soundEnabled) return;
+    if (!soundEnabled || soundVolume <= 0) return;
     try {
       const audioCtx = getAudioContext();
       if (!audioCtx) return;
+      const volFraction = soundVolume / 100;
 
       const now = audioCtx.currentTime;
 
@@ -444,15 +468,15 @@ export const AttendanceView: React.FC = () => {
 
         // Instant attack, sustained chirp, snappy release
         gain1.gain.setValueAtTime(0.0001, now);
-        gain1.gain.linearRampToValueAtTime(0.28, now + 0.002);
-        gain1.gain.setValueAtTime(0.28, now + 0.05);
+        gain1.gain.linearRampToValueAtTime(0.35 * volFraction, now + 0.002);
+        gain1.gain.setValueAtTime(0.35 * volFraction, now + 0.05);
         gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.068);
 
         // Secondary subtle harmonic overtone for physical piezo realism (5460Hz)
         osc2.type = 'sine';
         osc2.frequency.setValueAtTime(5460, now);
         gain2.gain.setValueAtTime(0.0001, now);
-        gain2.gain.linearRampToValueAtTime(0.035, now + 0.002);
+        gain2.gain.linearRampToValueAtTime(0.05 * volFraction, now + 0.002);
         gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.045);
 
         osc1.connect(gain1);
@@ -472,7 +496,7 @@ export const AttendanceView: React.FC = () => {
         const gain1 = audioCtx.createGain();
         osc1.type = 'triangle';
         osc1.frequency.setValueAtTime(330, now);
-        gain1.gain.setValueAtTime(0.22, now);
+        gain1.gain.setValueAtTime(0.25 * volFraction, now);
         gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
         osc1.connect(gain1);
         gain1.connect(audioCtx.destination);
@@ -485,7 +509,7 @@ export const AttendanceView: React.FC = () => {
         osc2.type = 'triangle';
         osc2.frequency.setValueAtTime(260, now + 0.115);
         gain2.gain.setValueAtTime(0.001, now);
-        gain2.gain.setValueAtTime(0.22, now + 0.115);
+        gain2.gain.setValueAtTime(0.25 * volFraction, now + 0.115);
         gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
         osc2.connect(gain2);
         gain2.connect(audioCtx.destination);
@@ -499,7 +523,7 @@ export const AttendanceView: React.FC = () => {
 
   // Clear High-Quality Standard English Spoken Announcement
   const speakGreeting = (text: string) => {
-    if (!soundEnabled) return;
+    if (!soundEnabled || soundVolume <= 0) return;
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     try {
@@ -540,12 +564,24 @@ export const AttendanceView: React.FC = () => {
 
       utterance.rate = 1.0;  // Balanced, natural human conversational pace
       utterance.pitch = 1.0; // Clear, natural standard pitch
-      utterance.volume = 1.0;
+      utterance.volume = Math.max(0.05, Math.min(1.0, soundVolume / 100));
 
       window.speechSynthesis.speak(utterance);
     } catch (err) {
       console.warn('Speech synthesis not available:', err);
     }
+  };
+
+  const testWelcomeSound = () => {
+    if (!soundEnabled || soundVolume <= 0) {
+      showToast('Sound is currently muted. Slide volume up or click the volume icon to enable sound.', 'warning');
+      return;
+    }
+    playBeep(true);
+    setTimeout(() => {
+      speakGreeting('Welcome to Gracia Learning Centre, Student.');
+    }, 140);
+    showToast(`🔊 Playing welcome sound preview at ${soundVolume}% volume`, 'info');
   };
 
   // Start Camera Scanner using Html5Qrcode engine with multi-mode fallback
@@ -1481,14 +1517,47 @@ export const AttendanceView: React.FC = () => {
                   </select>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => setSoundEnabled(!soundEnabled)}
-                  title={soundEnabled ? 'Mute Chime Sound' : 'Enable Chime Sound'}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-                >
-                  {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
-                </button>
+                {/* Welcome Sound & Chime Volume Control */}
+                <div className="flex items-center gap-2 bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 px-2.5 py-1 rounded-xl transition-all">
+                  <button
+                    type="button"
+                    onClick={toggleSoundEnabled}
+                    title={!soundEnabled || soundVolume === 0 ? 'Unmute Welcome Sound & Chime' : 'Mute Sound'}
+                    className="p-1 rounded-lg text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  >
+                    {!soundEnabled || soundVolume === 0 ? (
+                      <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                    ) : soundVolume <= 40 ? (
+                      <Volume1 className="w-3.5 h-3.5 text-blue-400" />
+                    ) : (
+                      <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+                    )}
+                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 hidden sm:inline">Vol:</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={soundEnabled ? soundVolume : 0}
+                      onChange={(e) => handleSoundVolumeChange(Number(e.target.value))}
+                      className="w-14 sm:w-20 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                      title={`Welcome sound & scan tone volume: ${soundEnabled ? soundVolume : 0}%`}
+                    />
+                    <span className="text-[10px] font-mono font-bold text-slate-300 w-7 text-right">
+                      {soundEnabled ? `${soundVolume}%` : '0%'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={testWelcomeSound}
+                    title="Test Welcome Greeting and Beep Sound"
+                    className="px-2 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-emerald-300 hover:text-emerald-200 text-[10px] font-bold border border-slate-600 transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    Test 🔊
+                  </button>
+                </div>
                 <Badge variant="primary" size="sm">
                   Optical QR & Barcode
                 </Badge>

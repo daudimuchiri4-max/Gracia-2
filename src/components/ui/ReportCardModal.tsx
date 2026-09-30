@@ -11,6 +11,7 @@ interface ReportCardModalProps {
   onClose: () => void;
   reportCard: ReportCard | null;
   school: School | null;
+  onTermChange?: (newTerm: 'Term 1' | 'Term 2' | 'Term 3') => void;
 }
 
 export const ReportCardModal: React.FC<ReportCardModalProps> = ({
@@ -18,6 +19,7 @@ export const ReportCardModal: React.FC<ReportCardModalProps> = ({
   onClose,
   reportCard,
   school,
+  onTermChange,
 }) => {
   if (!reportCard) return null;
 
@@ -42,7 +44,37 @@ export const ReportCardModal: React.FC<ReportCardModalProps> = ({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="CBC Learner Progress & Assessment Report" maxWidth="4xl">
-      <div id="printable-reportcard" className="p-8 bg-white border border-slate-200 rounded-xl space-y-6 text-slate-800">
+      <div className="space-y-4">
+        {/* Term Switcher inside Modal */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-blue-50/70 border border-blue-200 rounded-xl">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-bold text-blue-950">Select Term to Print:</span>
+            <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-blue-200 shadow-2xs">
+              {(['Term 1', 'Term 2', 'Term 3'] as const).map((t) => {
+                const isActive = reportCard.term === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => onTermChange?.(t)}
+                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-blue-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <span className="text-xs text-blue-900 font-semibold bg-white px-2.5 py-1 rounded-md border border-blue-200">
+            Selected: <strong className="text-blue-900 font-black">{reportCard.term}</strong>
+          </span>
+        </div>
+
+        <div id="printable-reportcard" className="p-8 bg-white border border-slate-200 rounded-xl space-y-6 text-slate-800">
         {/* Header */}
         <div className="flex items-center justify-between border-b-2 border-slate-900 pb-4">
           <div className="flex items-center gap-4">
@@ -165,6 +197,7 @@ export const ReportCardModal: React.FC<ReportCardModalProps> = ({
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       <div className="mt-6 flex justify-end gap-3">

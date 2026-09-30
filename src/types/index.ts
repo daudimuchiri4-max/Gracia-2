@@ -281,12 +281,14 @@ export interface AssessmentResult {
   admissionNumber: string;
   classLevel: GradeLevel;
   stream: string;
+  subjectId?: string;
   subjectName: string;
   score: number;
   maxScore: number;
   percentage: number;
   grade: string; // e.g. A, B+, B, C, etc.
   cbcRating: CBCRating; // EE, ME, AE, BE
+  term?: 'Term 1' | 'Term 2' | 'Term 3';
   strandFeedback?: {
     strand: string;
     rating: CBCRating;

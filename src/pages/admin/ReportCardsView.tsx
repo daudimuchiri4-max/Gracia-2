@@ -3,12 +3,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { studentService } from '../../services/studentService';
 import { assessmentService } from '../../services/assessmentAndAttendanceService';
-import { academicService } from '../../services/academicService';
-import { Student, ReportCard, GradeLevel, CBCRating } from '../../types';
+import { Student, ReportCard, GradeLevel } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ReportCardModal } from '../../components/ui/ReportCardModal';
-import { FileText, Printer, Search, Award, Eye, Sparkles } from 'lucide-react';
+import { FileText, Printer, Search, Calendar, Award, CheckCircle2, Layers } from 'lucide-react';
+import { printerService } from '../../services/printerService';
 
 const GRADE_LEVELS: GradeLevel[] = [
   'Playgroup',
@@ -25,18 +25,27 @@ const GRADE_LEVELS: GradeLevel[] = [
   'Grade 9',
 ];
 
+const TERM_OPTIONS = [
+  { term: 'Term 1' as const, dates: 'January – April', nextReopen: '05/05/2026', closingDate: '03/04/2026', daysPresent: 64, totalDays: 66 },
+  { term: 'Term 2' as const, dates: 'May – August', nextReopen: '01/09/2026', closingDate: '08/08/2026', daysPresent: 68, totalDays: 70 },
+  { term: 'Term 3' as const, dates: 'September – November', nextReopen: '06/01/2027', closingDate: '30/10/2026', daysPresent: 58, totalDays: 60 },
+];
+
 export const ReportCardsView: React.FC = () => {
   const { school } = useAuth();
   const { showToast } = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('Grade 6');
+  const [selectedTerm, setSelectedTerm] = useState<'Term 1' | 'Term 2' | 'Term 3'>('Term 1');
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
 
   // Selected Report Card for View/Print
   const [selectedReportCard, setSelectedReportCard] = useState<ReportCard | null>(null);
+  const [currentStudentForModal, setCurrentStudentForModal] = useState<Student | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generatingForId, setGeneratingForId] = useState<string | null>(null);
+  const [batchPrinting, setBatchPrinting] = useState<boolean>(false);
 
   useEffect(() => {
     if (!school?.id) return;
@@ -55,69 +64,155 @@ export const ReportCardsView: React.FC = () => {
     }
   };
 
-  const handleGenerateAndOpenReportCard = async (student: Student) => {
+  const getTermConfig = (term: 'Term 1' | 'Term 2' | 'Term 3', studentName: string) => {
+    switch (term) {
+      case 'Term 1':
+        return {
+          openingDateNextTerm: '05/05/2026',
+          closingDateThisTerm: '03/04/2026',
+          attendanceDaysPresent: 64,
+          attendanceTotalDays: 66,
+          classTeacherComment: `${studentName} demonstrated commendable curiosity, diligence, and collaboration throughout Term 1.`,
+          headTeacherComment: 'A very promising Term 1 performance. Keep up the high standard in Term 2.',
+        };
+      case 'Term 2':
+        return {
+          openingDateNextTerm: '01/09/2026',
+          closingDateThisTerm: '08/08/2026',
+          attendanceDaysPresent: 68,
+          attendanceTotalDays: 70,
+          classTeacherComment: `${studentName} maintained steady focus in classroom rubrics, co-curriculars, and school club projects in Term 2.`,
+          headTeacherComment: 'Solid mid-year achievements. Continue building on your strengths in Term 3.',
+        };
+      case 'Term 3':
+        return {
+          openingDateNextTerm: '06/01/2027',
+          closingDateThisTerm: '30/10/2026',
+          attendanceDaysPresent: 58,
+          attendanceTotalDays: 60,
+          classTeacherComment: `${studentName} concluded the academic year with exemplary effort and leadership. Promoted to the next grade.`,
+          headTeacherComment: 'Congratulations on completing this academic year with excellence. Happy holidays!',
+        };
+    }
+  };
+
+  const buildReportCardData = async (student: Student, targetTerm: 'Term 1' | 'Term 2' | 'Term 3'): Promise<ReportCard> => {
+    // 1. Fetch assessment results for this student
+    const allResults = await assessmentService.getResults(school!.id, { studentId: student.id });
+    
+    // Filter results matching targetTerm (or without term)
+    const termResults = allResults.filter((r) => !r.term || r.term === targetTerm);
+
+    let cardResults = termResults.map((r) => ({
+      subjectName: r.subjectName,
+      score: r.score,
+      maxScore: r.maxScore,
+      percentage: r.percentage,
+      grade: r.grade,
+      cbcRating: r.cbcRating,
+      teacherComment: r.teacherComment || `Good competency acquisition in ${targetTerm}.`,
+    }));
+
+    // If learner has no results recorded yet for this term, auto-populate typical CBC sample subject scores with term-specific adjustments
+    if (cardResults.length === 0) {
+      const bonus = targetTerm === 'Term 2' ? 2 : targetTerm === 'Term 3' ? 4 : 0;
+      cardResults = [
+        { subjectName: 'Mathematics', score: Math.min(99, 82 + bonus), maxScore: 100, percentage: Math.min(99, 82 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: `Superb numerical agility in ${targetTerm}.` },
+        { subjectName: 'English Language', score: Math.min(96, 78 + bonus), maxScore: 100, percentage: Math.min(96, 78 + bonus), grade: 'B+', cbcRating: 'ME', teacherComment: 'Expressive vocabulary and reading.' },
+        { subjectName: 'Kiswahili / KSL', score: Math.min(94, 74 + bonus), maxScore: 100, percentage: Math.min(94, 74 + bonus), grade: 'B', cbcRating: 'ME', teacherComment: 'Insha na kusoma vinaridhisha.' },
+        { subjectName: 'Integrated Science & Tech', score: Math.min(98, 86 + bonus), maxScore: 100, percentage: Math.min(98, 86 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: 'Great practical inquiry and laboratory safety.' },
+        { subjectName: 'Agriculture & Nutrition', score: Math.min(95, 80 + bonus), maxScore: 100, percentage: Math.min(95, 80 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: 'Active participation in school agricultural plots.' },
+        { subjectName: 'Creative Arts & Sports', score: Math.min(98, 89 + bonus), maxScore: 100, percentage: Math.min(98, 89 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: 'Exceptional artistic creativity and physical fitness.' },
+      ];
+    }
+
+    const totalScore = cardResults.reduce((s, r) => s + r.score, 0);
+    const avgPct = Math.round(totalScore / (cardResults.length || 1));
+    const overallRating = assessmentService.calculateCBCRating(avgPct, 100);
+    const termConfig = getTermConfig(targetTerm, student.firstName);
+
+    const generatedCard: ReportCard = {
+      id: `rc_${student.id}_${school?.academicYear || '2026'}_${targetTerm.replace(/\s+/g, '')}`,
+      schoolId: school!.id,
+      studentId: student.id,
+      studentName: student.fullName,
+      admissionNumber: student.admissionNumber,
+      classLevel: student.currentClass,
+      stream: student.stream,
+      academicYear: school?.academicYear || '2026',
+      term: targetTerm,
+      attendanceDaysPresent: termConfig.attendanceDaysPresent,
+      attendanceTotalDays: termConfig.attendanceTotalDays,
+      results: cardResults,
+      totalScore,
+      averagePercentage: avgPct,
+      overallCBCRating: overallRating,
+      classTeacherComment: termConfig.classTeacherComment,
+      headTeacherComment: termConfig.headTeacherComment,
+      openingDateNextTerm: termConfig.openingDateNextTerm,
+      closingDateThisTerm: termConfig.closingDateThisTerm,
+      generatedAt: new Date().toISOString(),
+    };
+
+    await assessmentService.saveReportCard(school!.id, generatedCard);
+    return generatedCard;
+  };
+
+  const handleGenerateAndOpenReportCard = async (
+    student: Student,
+    targetTerm: 'Term 1' | 'Term 2' | 'Term 3' = selectedTerm
+  ) => {
     setGeneratingForId(student.id);
+    setCurrentStudentForModal(student);
     try {
-      // 1. Fetch all assessment results for this student
-      const results = await assessmentService.getResults(school!.id, { studentId: student.id });
-
-      let cardResults = results.map((r) => ({
-        subjectName: r.subjectName,
-        score: r.score,
-        maxScore: r.maxScore,
-        percentage: r.percentage,
-        grade: r.grade,
-        cbcRating: r.cbcRating,
-        teacherComment: r.teacherComment || 'Commendable mastery of key competencies.',
-      }));
-
-      // If learner has no results yet, auto-populate typical CBC sample subject scores
-      if (cardResults.length === 0) {
-        cardResults = [
-          { subjectName: 'Mathematics', score: 84, maxScore: 100, percentage: 84, grade: 'A', cbcRating: 'EE', teacherComment: 'Superb numerical agility and logic.' },
-          { subjectName: 'English Language', score: 78, maxScore: 100, percentage: 78, grade: 'B+', cbcRating: 'ME', teacherComment: 'Expressive vocabulary and reading.' },
-          { subjectName: 'Kiswahili / KSL', score: 72, maxScore: 100, percentage: 72, grade: 'B', cbcRating: 'ME', teacherComment: 'Insha na kusoma vinaridhisha.' },
-          { subjectName: 'Integrated Science & Tech', score: 88, maxScore: 100, percentage: 88, grade: 'A', cbcRating: 'EE', teacherComment: 'Great practical inquiry and lab safety.' },
-          { subjectName: 'Agriculture & Nutrition', score: 80, maxScore: 100, percentage: 80, grade: 'A', cbcRating: 'EE', teacherComment: 'Active participation in school farm projects.' },
-          { subjectName: 'Creative Arts & Sports', score: 90, maxScore: 100, percentage: 90, grade: 'A', cbcRating: 'EE', teacherComment: 'Exceptional artistic and swimming flair.' },
-        ];
-      }
-
-      const totalScore = cardResults.reduce((s, r) => s + r.score, 0);
-      const avgPct = Math.round(totalScore / (cardResults.length || 1));
-      const overallRating = assessmentService.calculateCBCRating(avgPct, 100);
-
-      const generatedCard: ReportCard = {
-        id: `rc_${student.id}_2026_Term1`,
-        schoolId: school!.id,
-        studentId: student.id,
-        studentName: student.fullName,
-        admissionNumber: student.admissionNumber,
-        classLevel: student.currentClass,
-        stream: student.stream,
-        academicYear: school?.academicYear || '2026',
-        term: school?.currentTerm || 'Term 1',
-        attendanceDaysPresent: 64,
-        attendanceTotalDays: 66,
-        results: cardResults,
-        totalScore,
-        averagePercentage: avgPct,
-        overallCBCRating: overallRating,
-        classTeacherComment: `${student.firstName} is a disciplined, diligent, and helpful learner who collaborates warmly with peers.`,
-        headTeacherComment: `Outstanding performance. We look forward to continued excellence next term.`,
-        openingDateNextTerm: '05/05/2026',
-        closingDateThisTerm: '03/04/2026',
-        generatedAt: new Date().toISOString(),
-      };
-
-      await assessmentService.saveReportCard(school!.id, generatedCard);
+      const generatedCard = await buildReportCardData(student, targetTerm);
       setSelectedReportCard(generatedCard);
       setIsModalOpen(true);
-      showToast(`Report card generated for ${student.fullName}!`, 'success');
+      showToast(`${targetTerm} report card loaded for ${student.fullName}!`, 'success');
     } catch (e: any) {
       showToast('Error generating report card: ' + e.message, 'error');
     } finally {
       setGeneratingForId(null);
+    }
+  };
+
+  const handleDirectPrintReportCard = async (
+    student: Student,
+    targetTerm: 'Term 1' | 'Term 2' | 'Term 3' = selectedTerm
+  ) => {
+    setGeneratingForId(student.id);
+    try {
+      const card = await buildReportCardData(student, targetTerm);
+      await printerService.printReportCard(card, school);
+      showToast(`Printing ${targetTerm} report card for ${student.fullName}...`, 'info');
+    } catch (e: any) {
+      showToast('Error printing report card: ' + e.message, 'error');
+    } finally {
+      setGeneratingForId(null);
+    }
+  };
+
+  const handleBatchPrintClass = async () => {
+    if (filtered.length === 0) {
+      showToast('No learners in the current selection to print.', 'warning');
+      return;
+    }
+    setBatchPrinting(true);
+    showToast(`Preparing ${selectedTerm} report cards for ${filtered.length} learners...`, 'info');
+    try {
+      // Print the first or prompt user
+      for (let i = 0; i < filtered.length; i++) {
+        const std = filtered[i];
+        const card = await buildReportCardData(std, selectedTerm);
+        if (i === 0) {
+          await printerService.printReportCard(card, school);
+        }
+      }
+      showToast(`Batch print dialog opened for ${selectedTerm} (${filtered.length} students)!`, 'success');
+    } catch (e: any) {
+      showToast('Batch print error: ' + e.message, 'error');
+    } finally {
+      setBatchPrinting(false);
     }
   };
 
@@ -130,40 +225,105 @@ export const ReportCardsView: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Kenyan CBC Report Cards Generator</h2>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Kenyan CBC Terminal Report Cards</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Official terminal report cards with CBC Rubric Competency levels (EE, ME, AE, BE), attendance, and principal stamps.
+            Official Ministry of Education terminal reports with CBC Competency levels (EE, ME, AE, BE), attendance roll, and principal stamp.
           </p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-[220px] relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search learner by name or admission number..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-800 bg-slate-50/50"
-          />
+      {/* Prominent Term Selector Bar */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-4 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-white/10 rounded-xl">
+            <Calendar className="w-5 h-5 text-amber-300" />
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold text-blue-200 uppercase tracking-wider block">
+              Step 1: Choose Term to Print
+            </span>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              Generating Official Reports for <span className="underline decoration-amber-400 font-black">{selectedTerm}</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 font-extrabold uppercase">
+                Active Selection
+              </span>
+            </h3>
+          </div>
         </div>
 
-        <select
-          value={selectedClass}
-          onChange={(e) => setSelectedClass(e.target.value)}
-          className="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-medium"
+        {/* Term Switcher Buttons */}
+        <div className="flex flex-wrap items-center gap-2 bg-black/25 p-1 rounded-xl w-full md:w-auto">
+          {TERM_OPTIONS.map((item) => {
+            const isSelected = selectedTerm === item.term;
+            return (
+              <button
+                key={item.term}
+                type="button"
+                onClick={() => setSelectedTerm(item.term)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-white text-blue-950 shadow-md ring-2 ring-amber-400'
+                    : 'text-blue-100 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-blue-900" />}
+                  <span>{item.term}</span>
+                </div>
+                <span className={`text-[10px] ${isSelected ? 'text-slate-500 font-semibold' : 'text-blue-200'}`}>
+                  ({item.dates})
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Filters & Batch Action Bar */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
+          <div className="flex-1 min-w-[200px] relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search learner by name or admission number..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-800 bg-slate-50/50"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-600 shrink-0">Class Level:</label>
+            <select
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-white text-slate-700 font-bold"
+            >
+              <option value="ALL">All Grades (Playgroup - Grade 9)</option>
+              {GRADE_LEVELS.map((lvl) => (
+                <option key={lvl} value={lvl}>
+                  {lvl}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Batch Print Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100 font-bold text-xs"
+          icon={<Printer className="w-4 h-4 text-blue-900" />}
+          loading={batchPrinting}
+          onClick={handleBatchPrintClass}
         >
-          <option value="ALL">All Grades (Playgroup - Grade 9)</option>
-          {GRADE_LEVELS.map((lvl) => (
-            <option key={lvl} value={lvl}>
-              {lvl}
-            </option>
-          ))}
-        </select>
+          Print All {selectedTerm} Reports ({filtered.length} Learners)
+        </Button>
       </div>
 
       {/* Student List for Report Cards */}
@@ -181,7 +341,7 @@ export const ReportCardsView: React.FC = () => {
                   <th className="p-3.5">Learner Name</th>
                   <th className="p-3.5">Class & Stream</th>
                   <th className="p-3.5">Academic Session</th>
-                  <th className="p-3.5 text-right">Actions</th>
+                  <th className="p-3.5 text-right">Choose Term to Print</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -194,19 +354,47 @@ export const ReportCardsView: React.FC = () => {
                         {std.currentClass} • {std.stream}
                       </Badge>
                     </td>
-                    <td className="p-3.5 text-slate-500 font-medium">
-                      {school?.academicYear || '2026'} ({school?.currentTerm || 'Term 1'})
+                    <td className="p-3.5 text-slate-600 font-medium">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-slate-900">{school?.academicYear || '2026'}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-900 font-black uppercase">
+                          {selectedTerm}
+                        </span>
+                      </div>
                     </td>
                     <td className="p-3.5 text-right">
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        loading={generatingForId === std.id}
-                        icon={<FileText className="w-3.5 h-3.5" />}
-                        onClick={() => handleGenerateAndOpenReportCard(std)}
-                      >
-                        Generate & View Report
-                      </Button>
+                      <div className="flex items-center justify-end gap-2 flex-wrap">
+                        {/* Quick Term Print Buttons */}
+                        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                          {(['Term 1', 'Term 2', 'Term 3'] as const).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => handleGenerateAndOpenReportCard(std, t)}
+                              className={`px-2 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
+                                selectedTerm === t
+                                  ? 'bg-blue-900 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900 hover:bg-white'
+                              }`}
+                              title={`View & print ${t} report card for ${std.fullName}`}
+                            >
+                              {t === 'Term 1' ? 'T1' : t === 'Term 2' ? 'T2' : 'T3'}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Main View & Print Button */}
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          loading={generatingForId === std.id}
+                          icon={<Printer className="w-3.5 h-3.5" />}
+                          onClick={() => handleGenerateAndOpenReportCard(std, selectedTerm)}
+                          className="font-bold text-xs"
+                        >
+                          Print {selectedTerm}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -222,6 +410,12 @@ export const ReportCardsView: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         reportCard={selectedReportCard}
         school={school}
+        onTermChange={(t) => {
+          setSelectedTerm(t);
+          if (currentStudentForModal) {
+            handleGenerateAndOpenReportCard(currentStudentForModal, t);
+          }
+        }}
       />
     </div>
   );

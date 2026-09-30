@@ -56,17 +56,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onSuccess?.(profile.role || selectedRole);
       onClose();
     } catch (err: any) {
-      console.error('Google sign-in error:', err);
       let msg = err.message || 'Google sign-in failed. Please try again.';
       if (err.code === 'auth/popup-closed-by-user') {
         msg = 'Google sign-in popup was closed before completing.';
-      } else if (err.code === 'auth/popup-blocked') {
-        msg = 'Sign-in popup was blocked by browser. Please allow popups for this site.';
+        console.warn('Google sign-in popup closed by user');
+      } else if (err.code === 'auth/popup-blocked' || err.message?.includes('popup-blocked')) {
+        msg = 'Sign-in popup was blocked by your browser. Please allow popups for this site, or use the Email & Password credentials below.';
+        console.warn('Google sign-in popup blocked by browser settings');
       } else if (err.code === 'auth/network-request-failed') {
         msg = 'Network connection issue. Please check your internet connection.';
+        console.warn('Google sign-in network error:', err);
+      } else {
+        console.error('Google sign-in error:', err);
       }
       setErrorMessage(msg);
-      showToast(msg, 'error');
+      showToast(msg, 'warning');
     } finally {
       setLoading(false);
     }

@@ -86,7 +86,7 @@ export const assessmentService = {
     await deleteDoc(docRef);
   },
 
-  async getResults(schoolId: string, options?: { assessmentId?: string; studentId?: string }): Promise<AssessmentResult[]> {
+  async getResults(schoolId: string, options?: { assessmentId?: string; studentId?: string; term?: string }): Promise<AssessmentResult[]> {
     try {
       const snap = await getDocs(collection(db, 'schools', schoolId, 'results'));
       let list = snap.docs.map((d) => ({ ...d.data(), id: d.id } as AssessmentResult));
@@ -95,6 +95,9 @@ export const assessmentService = {
       }
       if (options?.studentId) {
         list = list.filter((r) => r.studentId === options.studentId);
+      }
+      if (options?.term) {
+        list = list.filter((r) => r.term === options.term);
       }
       return list;
     } catch (err) {
@@ -144,6 +147,54 @@ export const assessmentService = {
 
     await setDoc(docRef, cleanForFirestore(fullResult), { merge: true });
     return fullResult;
+  },
+
+  async deleteResult(schoolId: string, resultId: string): Promise<void> {
+    const docRef = doc(db, 'schools', schoolId, 'results', resultId);
+    await deleteDoc(docRef);
+  },
+
+  async deleteMultipleResults(schoolId: string, resultIds: string[]): Promise<void> {
+    await Promise.all(
+      resultIds.map(async (id) => {
+        const docRef = doc(db, 'schools', schoolId, 'results', id);
+        await deleteDoc(docRef).catch((e) => console.warn(`Failed to delete result ${id}:`, e));
+      })
+    );
+  },
+
+  async updateResultScore(
+    schoolId: string,
+    resultId: string,
+    newScore: number,
+    maxScore: number,
+    teacherComment?: string,
+    term?: 'Term 1' | 'Term 2' | 'Term 3'
+  ): Promise<AssessmentResult> {
+    const docRef = doc(db, 'schools', schoolId, 'results', resultId);
+    const validMaxScore = Math.max(1, Number(maxScore) || 100);
+    const validScore = Math.max(0, Math.min(validMaxScore, Number(newScore) || 0));
+    const pct = Math.round((validScore / validMaxScore) * 100);
+    const cbcRating = this.calculateCBCRating(validScore, validMaxScore);
+    const grade = this.calculateGrade(validScore, validMaxScore);
+
+    const updatePayload: Record<string, any> = {
+      score: validScore,
+      maxScore: validMaxScore,
+      percentage: pct,
+      cbcRating,
+      grade,
+      updatedAt: new Date().toISOString(),
+    };
+    if (teacherComment !== undefined) {
+      updatePayload.teacherComment = teacherComment;
+    }
+    if (term) {
+      updatePayload.term = term;
+    }
+    await updateDoc(docRef, cleanForFirestore(updatePayload));
+    const snap = await getDoc(docRef);
+    return { ...snap.data(), id: docRef.id } as AssessmentResult;
   },
 
   async getReportCards(schoolId: string, studentId?: string): Promise<ReportCard[]> {
