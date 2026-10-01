@@ -463,36 +463,66 @@ async function startServer() {
       }
     });
   } else {
-    // Production mode: Serve compiled static files from dist/
+    // Production mode: Serve compiled static files from dist/ with anti-caching headers for HTML and SW
     const distPath = path.join(process.cwd(), 'dist');
     const distIndexPath = path.join(distPath, 'index.html');
     const rootIndexPath = path.join(process.cwd(), 'index.html');
 
-    app.use(express.static(distPath));
-    app.use(express.static(path.join(process.cwd(), 'public')));
+    // 1. Explicitly serve hashed assets (/assets/...) with immutable cache
+    app.use(
+      '/assets',
+      express.static(path.join(distPath, 'assets'), {
+        maxAge: '1y',
+        immutable: true,
+      })
+    );
 
-    app.get(['/', '/index.html'], (req: Request, res: Response) => {
+    // Missing assets in /assets/* MUST return 404 text/plain, NOT index.html!
+    // Returning index.html for a script tag breaks browser strict MIME checking and causes blank screens.
+    app.all('/assets/*', (req: Request, res: Response) => {
+      res.status(404).type('text/plain').send('Asset not found');
+    });
+
+    // 2. Serve static files with no-cache headers for HTML and service worker files
+    const noCacheSetHeaders = (res: any, filePath: string) => {
+      if (
+        filePath.endsWith('.html') ||
+        filePath.endsWith('sw.js') ||
+        filePath.endsWith('registerSW.js') ||
+        filePath.endsWith('manifest.json')
+      ) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    };
+
+    app.use(express.static(distPath, { setHeaders: noCacheSetHeaders }));
+    app.use(express.static(path.join(process.cwd(), 'public'), { setHeaders: noCacheSetHeaders }));
+
+    const sendFreshIndexHtml = (res: Response) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       if (fs.existsSync(distIndexPath)) {
         return res.sendFile(distIndexPath);
       } else if (fs.existsSync(rootIndexPath)) {
         return res.sendFile(rootIndexPath);
       }
       res.status(404).send('Application build not found.');
+    };
+
+    app.get(['/', '/index.html'], (req: Request, res: Response) => {
+      sendFreshIndexHtml(res);
     });
 
-    // Client-Side SPA Fallback: Map all unmatched GET routes to index.html
+    // Client-Side SPA Fallback: Map all unmatched GET routes to index.html with fresh headers
     app.get('*', (req: Request, res: Response) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
         return res.status(404).json({ error: 'API route not found' });
       }
 
-      if (fs.existsSync(distIndexPath)) {
-        return res.sendFile(distIndexPath);
-      } else if (fs.existsSync(rootIndexPath)) {
-        return res.sendFile(rootIndexPath);
-      }
-
-      res.status(404).send('Application build not found. Please run "npm run build" to generate dist/index.html.');
+      sendFreshIndexHtml(res);
     });
   }
 
