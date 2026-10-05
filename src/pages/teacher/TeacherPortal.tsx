@@ -11,6 +11,7 @@ import { StaffLoginModal } from '../../components/ui/StaffLoginModal';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
   CalendarCheck,
+  Calendar,
   Award,
   Users,
   Save,
@@ -36,6 +37,14 @@ import {
   VolumeX,
 } from 'lucide-react';
 
+export interface ScannedRecord {
+  student: Student;
+  time: string;
+  date: string;
+  timestamp: number;
+  isDuplicate?: boolean;
+}
+
 export const TeacherPortal: React.FC = () => {
   const { school, user, login, logout } = useAuth();
   const { showToast } = useToast();
@@ -48,6 +57,8 @@ export const TeacherPortal: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceMap, setAttendanceMap] = useState<Record<string, 'PRESENT' | 'ABSENT' | 'LATE' | 'SICK'>>({});
+  const [scannedDetailsMap, setScannedDetailsMap] = useState<Record<string, { time: string; date: string }>>({});
+  const [lastScannedRecord, setLastScannedRecord] = useState<ScannedRecord | null>(null);
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [markMap, setMarkMap] = useState<Record<string, { score: number; comment: string }>>({});
   const [savingMarks, setSavingMarks] = useState(false);
@@ -181,7 +192,11 @@ export const TeacherPortal: React.FC = () => {
 
     if (found) {
       const now = Date.now();
-      if (lastScannedRef.current && lastScannedRef.current.id === found.id && now - lastScannedRef.current.time < 6000) {
+      const nowDate = new Date(now);
+      const timeStr = nowDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dateStr = nowDate.toLocaleDateString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+
+      if (lastScannedRef.current && lastScannedRef.current.id === found.id && now - lastScannedRef.current.time < 5000) {
         // Ignore rapid duplicate scan
         return;
       }
@@ -190,7 +205,20 @@ export const TeacherPortal: React.FC = () => {
         isProcessingScanRef.current = true;
         lastScannedRef.current = { id: found.id, time: now };
         setLastScanned({ id: found.id, time: now });
-        showToast(`ℹ️ ${found.fullName} (${found.admissionNumber}) is already checked in!`, 'info');
+        
+        const existing = scannedDetailsMap[found.id];
+        const recordTime = existing ? existing.time : timeStr;
+        const recordDate = existing ? existing.date : dateStr;
+
+        setLastScannedRecord({
+          student: found,
+          time: recordTime,
+          date: recordDate,
+          timestamp: now,
+          isDuplicate: true,
+        });
+
+        showToast(`ℹ️ ${found.fullName} (${found.admissionNumber}) is already checked in (Recorded at ${recordTime} on ${recordDate})`, 'info');
         setTimeout(() => {
           isProcessingScanRef.current = false;
         }, 1500);
@@ -201,8 +229,17 @@ export const TeacherPortal: React.FC = () => {
       lastScannedRef.current = { id: found.id, time: now };
       setLastScanned({ id: found.id, time: now });
       setAttendanceMap((p) => ({ ...p, [found.id]: 'PRESENT' }));
+      setScannedDetailsMap((p) => ({ ...p, [found.id]: { time: timeStr, date: dateStr } }));
+      setLastScannedRecord({
+        student: found,
+        time: timeStr,
+        date: dateStr,
+        timestamp: now,
+        isDuplicate: false,
+      });
+
       playWelcomeSound(found.fullName);
-      showToast(`🎉 Welcome! ${found.fullName} (${found.admissionNumber}) checked in successfully!`, 'success');
+      showToast(`🎉 Scanned & Verified: ${found.fullName} (${found.admissionNumber}) • ${timeStr} • ${dateStr}`, 'success');
 
       setTimeout(() => {
         isProcessingScanRef.current = false;
@@ -214,7 +251,7 @@ export const TeacherPortal: React.FC = () => {
         isProcessingScanRef.current = false;
       }, 2000);
     }
-  }, [showToast]);
+  }, [showToast, scannedDetailsMap]);
 
   // Direct Teacher Login Form State
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -236,14 +273,15 @@ export const TeacherPortal: React.FC = () => {
   useEffect(() => {
     if (!school?.id || !isTeacherAuthenticated) return;
     loadTeacherData();
-  }, [school?.id, selectedClass, selectedStream, isTeacherAuthenticated]);
+  }, [school?.id, selectedClass, selectedStream, attendanceDate, isTeacherAuthenticated]);
 
   const loadTeacherData = async () => {
     setLoading(true);
     try {
-      const [stdList, subList] = await Promise.all([
+      const [stdList, subList, existingAttList] = await Promise.all([
         studentService.getStudents(school!.id, { classLevel: selectedClass, stream: selectedStream }),
         academicService.getSubjects(school!.id),
+        attendanceService.getAttendanceRecords(school!.id, { classLevel: selectedClass, date: attendanceDate }),
       ]);
       setStudents(stdList);
       setSubjects(subList);
@@ -253,12 +291,38 @@ export const TeacherPortal: React.FC = () => {
 
       const initialAtt: Record<string, 'PRESENT' | 'ABSENT' | 'LATE' | 'SICK'> = {};
       const initialMarks: Record<string, { score: number; comment: string }> = {};
+      const initialScanned: Record<string, { time: string; date: string }> = {};
+
       stdList.forEach((s) => {
         initialAtt[s.id] = 'PRESENT';
         initialMarks[s.id] = { score: 80, comment: 'Good participation' };
       });
+
+      // If existing attendance records found for today / this date, hydrate scan records
+      const matchRec = existingAttList.find(
+        (r) => selectedStream === 'ALL' || r.stream?.toLowerCase() === selectedStream?.toLowerCase()
+      );
+      if (matchRec) {
+        matchRec.entries.forEach((ent) => {
+          if (ent.status) {
+            initialAtt[ent.studentId] = ent.status as 'PRESENT' | 'ABSENT' | 'LATE' | 'SICK';
+          }
+          if (ent.scanTime) {
+            initialScanned[ent.studentId] = { time: ent.scanTime, date: ent.scanDate || matchRec.date };
+          } else if (ent.remarks?.includes('(')) {
+            const timeMatch = ent.remarks.match(/\((.*?)\)/);
+            if (timeMatch) {
+              initialScanned[ent.studentId] = { time: timeMatch[1], date: ent.scanDate || matchRec.date };
+            }
+          }
+        });
+      }
+
       setAttendanceMap(initialAtt);
       setMarkMap(initialMarks);
+      if (Object.keys(initialScanned).length > 0) {
+        setScannedDetailsMap((prev) => ({ ...initialScanned, ...prev }));
+      }
     } catch (e: any) {
       showToast('Error loading teacher portal: ' + e.message, 'error');
     } finally {
@@ -318,6 +382,11 @@ export const TeacherPortal: React.FC = () => {
           studentName: s.fullName,
           admissionNumber: s.admissionNumber,
           status: attendanceMap[s.id] || 'PRESENT',
+          scanTime: scannedDetailsMap[s.id]?.time,
+          scanDate: scannedDetailsMap[s.id]?.date,
+          remarks: scannedDetailsMap[s.id]
+            ? `QR Scanned (${scannedDetailsMap[s.id].time} on ${scannedDetailsMap[s.id].date})`
+            : undefined,
         })),
       });
       showToast('Attendance roll submitted to school records!', 'success');
@@ -657,6 +726,61 @@ export const TeacherPortal: React.FC = () => {
         </div>
       </div>
 
+      {/* Recently Scanned Confirmation Card */}
+      {lastScannedRecord && activeTab === 'ATTENDANCE' && (
+        <div className="bg-emerald-50 border-2 border-emerald-400 p-4 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-1 shadow-sm">
+          <div className="flex items-start sm:items-center gap-3.5 flex-1">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-white shrink-0 shadow-xs ${
+              lastScannedRecord.isDuplicate ? 'bg-amber-600' : 'bg-emerald-600'
+            }`}>
+              {lastScannedRecord.isDuplicate ? <AlertCircle className="w-7 h-7" /> : <CheckCircle2 className="w-7 h-7" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md ${
+                  lastScannedRecord.isDuplicate ? 'text-amber-900 bg-amber-200 border border-amber-300' : 'text-emerald-900 bg-emerald-200 border border-emerald-300'
+                }`}>
+                  {lastScannedRecord.isDuplicate ? 'Already Checked In Today' : 'Scanned & Checked In'}
+                </span>
+                <span className="font-extrabold text-base text-slate-900">{lastScannedRecord.student.fullName}</span>
+                <span className="text-xs font-mono font-bold text-blue-900 bg-blue-100/80 px-2 py-0.5 rounded-md border border-blue-200">
+                  {lastScannedRecord.student.admissionNumber}
+                </span>
+              </div>
+
+              {/* Prominent Time Scanned & Date Scanned Stat Tiles */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-2 border-t border-emerald-200/80 max-w-lg">
+                <div className="bg-white border border-emerald-300/80 px-3 py-1.5 rounded-xl flex items-center gap-2.5 shadow-2xs">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Clock className="w-4 h-4 text-emerald-700" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] uppercase font-bold text-slate-500 block leading-tight">Time Scanned</span>
+                    <span className="font-mono font-black text-emerald-900 text-xs sm:text-sm">{lastScannedRecord.time}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-blue-200 px-3 py-1.5 rounded-xl flex items-center gap-2.5 shadow-2xs">
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                    <Calendar className="w-4 h-4 text-blue-700" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[9px] uppercase font-bold text-slate-500 block leading-tight">Date Scanned</span>
+                    <span className="font-bold text-slate-900 text-xs truncate block">{lastScannedRecord.date}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setLastScannedRecord(null)}
+            className="text-slate-400 hover:text-slate-700 text-xs px-3 py-1.5 rounded-xl hover:bg-emerald-100/60 cursor-pointer font-bold shrink-0 self-start sm:self-center transition-colors"
+          >
+            Dismiss ✕
+          </button>
+        </div>
+      )}
+
       {/* Content Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         {loading ? (
@@ -670,16 +794,36 @@ export const TeacherPortal: React.FC = () => {
                 <tr>
                   <th className="p-3.5">Admission No</th>
                   <th className="p-3.5">Learner Name</th>
+                  <th className="p-3.5">Time &amp; Date Scanned</th>
                   <th className="p-3.5">Attendance Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {students.map((std) => {
                   const curr = attendanceMap[std.id] || 'PRESENT';
+                  const scanInfo = scannedDetailsMap[std.id];
                   return (
                     <tr key={std.id} className="hover:bg-slate-50/70">
                       <td className="p-3.5 font-bold text-slate-900">{std.admissionNumber}</td>
                       <td className="p-3.5 font-semibold text-slate-900">{std.fullName}</td>
+                      <td className="p-3.5">
+                        {scanInfo ? (
+                          <div className="flex flex-col">
+                            <span className="text-xs font-mono font-bold text-emerald-800 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              {scanInfo.time}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                              <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                              {scanInfo.date}
+                            </span>
+                          </div>
+                        ) : curr === 'PRESENT' ? (
+                          <span className="text-[11px] text-slate-500 font-medium">Recorded (Manual)</span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">Not yet scanned</span>
+                        )}
+                      </td>
                       <td className="p-3.5">
                         <div className="flex gap-2">
                           {(['PRESENT', 'ABSENT', 'LATE', 'SICK'] as const).map((st) => (
@@ -792,6 +936,7 @@ export const TeacherPortal: React.FC = () => {
         isMuted={isSoundMuted}
         onToggleMute={toggleSoundMute}
         onTestSound={testAudio}
+        lastScannedRecord={lastScannedRecord}
       />
     </div>
   );
@@ -807,6 +952,7 @@ interface QrScannerModalProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onTestSound: (vol?: number) => void;
+  lastScannedRecord: ScannedRecord | null;
 }
 
 const QrScannerModal: React.FC<QrScannerModalProps> = ({
@@ -819,6 +965,7 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
   isMuted,
   onToggleMute,
   onTestSound,
+  lastScannedRecord,
 }) => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState<boolean>(false);
@@ -969,6 +1116,71 @@ const QrScannerModal: React.FC<QrScannerModalProps> = ({
               </div>
             )}
           </div>
+
+          {/* Real-time Last Scanned Student Result with Prominent Date & Time */}
+          {lastScannedRecord && (
+            <div
+              className={`p-3.5 rounded-2xl border-2 text-white shadow-md transition-all animate-in fade-in slide-in-from-top-1 ${
+                lastScannedRecord.isDuplicate
+                  ? 'bg-amber-950/80 border-amber-500'
+                  : 'bg-emerald-950/90 border-emerald-500 ring-2 ring-emerald-500/30'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className={`text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                    lastScannedRecord.isDuplicate ? 'text-amber-400' : 'text-emerald-400'
+                  }`}
+                >
+                  {lastScannedRecord.isDuplicate ? (
+                    <>
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                      Already Checked In Today:
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      Scanned &amp; Logged Present:
+                    </>
+                  )}
+                </span>
+                <span className="text-[10px] font-mono text-emerald-300 font-bold bg-emerald-900/60 px-2 py-0.5 rounded-md border border-emerald-700/50">
+                  Status: PRESENT
+                </span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between">
+                <div>
+                  <h4 className="font-extrabold text-sm sm:text-base text-white">{lastScannedRecord.student.fullName}</h4>
+                  <p className="text-xs text-slate-300">
+                    Adm: <strong className="text-amber-400 font-mono">{lastScannedRecord.student.admissionNumber}</strong> • {lastScannedRecord.student.currentClass} {lastScannedRecord.student.stream}
+                  </p>
+                </div>
+              </div>
+
+              {/* Prominent High-Visibility Stat Tiles */}
+              <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800">
+                <div className="bg-slate-900/90 border border-slate-700/80 p-2 rounded-xl flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Time Scanned</span>
+                    <span className="font-mono font-black text-amber-300 text-xs sm:text-sm truncate block">{lastScannedRecord.time}</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/90 border border-slate-700/80 p-2 rounded-xl flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                    <Calendar className="w-3.5 h-3.5 text-blue-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Date Scanned</span>
+                    <span className="font-bold text-white text-[11px] sm:text-xs truncate block">{lastScannedRecord.date}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Roster students tap-to-simulate */}
           <div>

@@ -10,6 +10,8 @@ import { ReportCardModal } from '../../components/ui/ReportCardModal';
 import { FileText, Printer, Search, Calendar, Award, CheckCircle2, Layers } from 'lucide-react';
 import { printerService } from '../../services/printerService';
 
+import { generateStudentReportCard } from '../../utils/reportCardHelper';
+
 const GRADE_LEVELS: GradeLevel[] = [
   'Playgroup',
   'PP1',
@@ -97,65 +99,7 @@ export const ReportCardsView: React.FC = () => {
   };
 
   const buildReportCardData = async (student: Student, targetTerm: 'Term 1' | 'Term 2' | 'Term 3'): Promise<ReportCard> => {
-    // 1. Fetch assessment results for this student
-    const allResults = await assessmentService.getResults(school!.id, { studentId: student.id });
-    
-    // Filter results matching targetTerm (or without term)
-    const termResults = allResults.filter((r) => !r.term || r.term === targetTerm);
-
-    let cardResults = termResults.map((r) => ({
-      subjectName: r.subjectName,
-      score: r.score,
-      maxScore: r.maxScore,
-      percentage: r.percentage,
-      grade: r.grade,
-      cbcRating: r.cbcRating,
-      teacherComment: r.teacherComment || `Good competency acquisition in ${targetTerm}.`,
-    }));
-
-    // If learner has no results recorded yet for this term, auto-populate typical CBC sample subject scores with term-specific adjustments
-    if (cardResults.length === 0) {
-      const bonus = targetTerm === 'Term 2' ? 2 : targetTerm === 'Term 3' ? 4 : 0;
-      cardResults = [
-        { subjectName: 'Mathematics', score: Math.min(99, 82 + bonus), maxScore: 100, percentage: Math.min(99, 82 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: `Superb numerical agility in ${targetTerm}.` },
-        { subjectName: 'English Language', score: Math.min(96, 78 + bonus), maxScore: 100, percentage: Math.min(96, 78 + bonus), grade: 'B+', cbcRating: 'ME', teacherComment: 'Expressive vocabulary and reading.' },
-        { subjectName: 'Kiswahili / KSL', score: Math.min(94, 74 + bonus), maxScore: 100, percentage: Math.min(94, 74 + bonus), grade: 'B', cbcRating: 'ME', teacherComment: 'Insha na kusoma vinaridhisha.' },
-        { subjectName: 'Integrated Science & Tech', score: Math.min(98, 86 + bonus), maxScore: 100, percentage: Math.min(98, 86 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: 'Great practical inquiry and laboratory safety.' },
-        { subjectName: 'Agriculture & Nutrition', score: Math.min(95, 80 + bonus), maxScore: 100, percentage: Math.min(95, 80 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: 'Active participation in school agricultural plots.' },
-        { subjectName: 'Creative Arts & Sports', score: Math.min(98, 89 + bonus), maxScore: 100, percentage: Math.min(98, 89 + bonus), grade: 'A', cbcRating: 'EE', teacherComment: 'Exceptional artistic creativity and physical fitness.' },
-      ];
-    }
-
-    const totalScore = cardResults.reduce((s, r) => s + r.score, 0);
-    const avgPct = Math.round(totalScore / (cardResults.length || 1));
-    const overallRating = assessmentService.calculateCBCRating(avgPct, 100);
-    const termConfig = getTermConfig(targetTerm, student.firstName);
-
-    const generatedCard: ReportCard = {
-      id: `rc_${student.id}_${school?.academicYear || '2026'}_${targetTerm.replace(/\s+/g, '')}`,
-      schoolId: school!.id,
-      studentId: student.id,
-      studentName: student.fullName,
-      admissionNumber: student.admissionNumber,
-      classLevel: student.currentClass,
-      stream: student.stream,
-      academicYear: school?.academicYear || '2026',
-      term: targetTerm,
-      attendanceDaysPresent: termConfig.attendanceDaysPresent,
-      attendanceTotalDays: termConfig.attendanceTotalDays,
-      results: cardResults,
-      totalScore,
-      averagePercentage: avgPct,
-      overallCBCRating: overallRating,
-      classTeacherComment: termConfig.classTeacherComment,
-      headTeacherComment: termConfig.headTeacherComment,
-      openingDateNextTerm: termConfig.openingDateNextTerm,
-      closingDateThisTerm: termConfig.closingDateThisTerm,
-      generatedAt: new Date().toISOString(),
-    };
-
-    await assessmentService.saveReportCard(school!.id, generatedCard);
-    return generatedCard;
+    return await generateStudentReportCard(school!.id, student, targetTerm, school);
   };
 
   const handleGenerateAndOpenReportCard = async (

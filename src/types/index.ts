@@ -252,6 +252,8 @@ export interface AttendanceRecord {
     admissionNumber: string;
     status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'SICK';
     remarks?: string;
+    scanTime?: string;
+    scanDate?: string;
   }[];
 }
 

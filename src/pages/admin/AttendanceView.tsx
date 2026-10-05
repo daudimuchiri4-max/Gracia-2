@@ -73,6 +73,7 @@ interface LiveScanEvent {
   admissionNumber: string;
   classLevel: string;
   timestamp: string;
+  date?: string;
   status: 'PRESENT' | 'LATE';
 }
 
@@ -118,13 +119,15 @@ export const AttendanceView: React.FC = () => {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [usbInput, setUsbInput] = useState<string>('');
   const [lastScannedStudent, setLastScannedStudent] = useState<Student | null>(null);
+  const [lastScannedTimeInfo, setLastScannedTimeInfo] = useState<{ time: string; date: string; fullDate: string } | null>(null);
   const [alreadyCheckedInAlert, setAlreadyCheckedInAlert] = useState<{
     student: Student;
     time: string;
+    date: string;
     status: 'PRESENT' | 'LATE';
   } | null>(null);
   const [checkedInTodayMap, setCheckedInTodayMap] = useState<
-    Record<string, { time: string; status: 'PRESENT' | 'LATE'; studentName: string }>
+    Record<string, { time: string; date?: string; status: 'PRESENT' | 'LATE'; studentName: string }>
   >({});
   const [scanFeed, setScanFeed] = useState<LiveScanEvent[]>([]);
   const [scanFlash, setScanFlash] = useState<boolean>(false);
@@ -809,13 +812,22 @@ export const AttendanceView: React.FC = () => {
 
       const firstName = matched.firstName || (matched.fullName ? matched.fullName.trim().split(/\s+/)[0] : 'Learner');
 
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const dateStr = now.toLocaleDateString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+      const fullDateStr = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const isLate = now.getHours() > 8; // After 8:00 AM
+
       if (alreadyChecked) {
         const checkedTime =
           alreadyChecked.timestamp || (alreadyChecked as any).time || 'Earlier today';
+        const checkedDate = (alreadyChecked as any).date || dateStr;
         setLastScannedStudent(null);
+        setLastScannedTimeInfo(null);
         setAlreadyCheckedInAlert({
           student: matched,
           time: checkedTime,
+          date: checkedDate,
           status: alreadyChecked.status || 'PRESENT',
         });
 
@@ -825,22 +837,19 @@ export const AttendanceView: React.FC = () => {
         // Voice announcement: "Student already checked in"
         speakGreeting(`${matched.fullName || firstName}, student already checked in.`);
 
-        showToast(`${matched.fullName} (${matched.admissionNumber}): Student already checked in today (${checkedTime}). No duplicate recorded.`, 'warning');
+        showToast(`${matched.fullName} (${matched.admissionNumber}): Already checked in today at ${checkedTime} on ${checkedDate}.`, 'warning');
         return;
       }
 
       // First-time check-in today:
       setAlreadyCheckedInAlert(null);
       setLastScannedStudent(matched);
+      setLastScannedTimeInfo({ time: timeStr, date: dateStr, fullDate: fullDateStr });
       setScanFlash(true);
       setTimeout(() => setScanFlash(false), 900);
 
       // Play success chime immediately (zero latency)
       playBeep(true);
-
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const isLate = now.getHours() > 8; // After 8:00 AM
 
       // Speak Clear Standard English Greeting: "Welcome to Gracia Learning Centre, [First Name]!"
       speakGreeting(`Welcome to Gracia Learning Centre, ${firstName}.`);
@@ -848,6 +857,7 @@ export const AttendanceView: React.FC = () => {
       // Update in-memory tracking map so subsequent scans immediately know
       const checkInData = {
         time: timeStr,
+        date: dateStr,
         status: (isLate ? 'LATE' : 'PRESENT') as 'PRESENT' | 'LATE',
         studentName: matched.fullName,
       };
@@ -865,12 +875,13 @@ export const AttendanceView: React.FC = () => {
           admissionNumber: matched.admissionNumber,
           classLevel: `${matched.currentClass} ${matched.stream}`,
           timestamp: timeStr,
+          date: dateStr,
           status: isLate ? 'LATE' : 'PRESENT',
         },
         ...prev.slice(0, 24),
       ]);
 
-      showToast(`Verified & Logged: ${matched.fullName} (${matched.admissionNumber})`, 'success');
+      showToast(`🎉 Verified: ${matched.fullName} (${matched.admissionNumber}) • ${timeStr} • ${dateStr}`, 'success');
 
       // Auto-sync into today's Firestore attendance record
       if (school?.id) {
@@ -900,7 +911,9 @@ export const AttendanceView: React.FC = () => {
               return {
                 ...e,
                 status: (isLate ? 'LATE' : 'PRESENT') as AttendanceRecord['entries'][0]['status'],
-                remarks: `Scanned at Gate Terminal (${timeStr})`,
+                remarks: `Scanned at Gate Terminal (${timeStr} on ${dateStr})`,
+                scanTime: timeStr,
+                scanDate: dateStr,
               };
             }
             return e;
@@ -1035,6 +1048,47 @@ export const AttendanceView: React.FC = () => {
         date: dateStr,
       });
       setDailyAttendanceRecords(records);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (dateStr === todayStr && records.length > 0) {
+        const mapUpdates: Record<string, { time: string; date: string; status: 'PRESENT' | 'LATE'; studentName: string }> = {};
+        const feedItems: typeof scanFeed = [];
+        records.forEach((rec) => {
+          rec.entries.forEach((ent) => {
+            if (ent.scanTime || ent.remarks?.includes('Gate') || ent.remarks?.includes('Scanned')) {
+              const timeMatch = ent.remarks?.match(/\((.*?)\)/);
+              const timeVal = ent.scanTime || (timeMatch ? timeMatch[1] : 'Earlier today');
+              const dateVal = ent.scanDate || rec.date;
+              const status: 'PRESENT' | 'LATE' = ent.status === 'LATE' ? 'LATE' : 'PRESENT';
+              const item: { time: string; date: string; status: 'PRESENT' | 'LATE'; studentName: string } = {
+                time: timeVal,
+                date: dateVal,
+                status,
+                studentName: ent.studentName,
+              };
+              mapUpdates[ent.studentId] = item;
+              if (ent.admissionNumber) {
+                mapUpdates[ent.admissionNumber] = item;
+                mapUpdates[ent.admissionNumber.toLowerCase()] = item;
+              }
+              feedItems.push({
+                id: `scan-${ent.studentId}-${timeVal}`,
+                studentId: ent.studentId,
+                studentName: ent.studentName,
+                admissionNumber: ent.admissionNumber,
+                classLevel: `${rec.classLevel} ${rec.stream}`,
+                timestamp: timeVal,
+                date: dateVal,
+                status,
+              });
+            }
+          });
+        });
+        if (Object.keys(mapUpdates).length > 0) {
+          setCheckedInTodayMap((prev) => ({ ...mapUpdates, ...prev }));
+          setScanFeed((prev) => (prev.length === 0 ? feedItems : prev));
+        }
+      }
     } catch (e: any) {
       console.error('Error loading daily attendance report:', e);
       showToast('Error loading attendance records for ' + dateStr, 'error');
@@ -1065,6 +1119,7 @@ export const AttendanceView: React.FC = () => {
       remarks?: string;
       recordedBy?: string;
       checkInTime?: string;
+      checkInDate?: string;
     }
   > = {};
 
@@ -1074,12 +1129,14 @@ export const AttendanceView: React.FC = () => {
   dailyAttendanceRecords.forEach((rec) => {
     rec.entries.forEach((ent) => {
       const timeMatch = ent.remarks?.match(/\((.*?)\)/);
-      const timeVal = timeMatch ? timeMatch[1] : undefined;
+      const timeVal = ent.scanTime || (timeMatch ? timeMatch[1] : undefined);
+      const dateVal = ent.scanDate || rec.date;
       const data = {
         status: ent.status,
         remarks: ent.remarks || '',
         recordedBy: rec.recordedBy,
         checkInTime: timeVal,
+        checkInDate: dateVal,
       };
       reportStudentStatusMap[ent.studentId] = data;
       if (ent.admissionNumber) {
@@ -1091,12 +1148,13 @@ export const AttendanceView: React.FC = () => {
 
   // 2. If report is today, also incorporate live gate scans if not in class roll
   if (isReportDateToday) {
-    (Object.entries(checkedInTodayMap) as [string, { time: string; status: 'PRESENT' | 'LATE'; studentName: string }][]).forEach(([idOrAdm, check]) => {
+    (Object.entries(checkedInTodayMap) as [string, { time: string; date?: string; status: 'PRESENT' | 'LATE'; studentName: string }][]).forEach(([idOrAdm, check]) => {
       if (!reportStudentStatusMap[idOrAdm] || reportStudentStatusMap[idOrAdm].status === 'NOT_RECORDED') {
         reportStudentStatusMap[idOrAdm] = {
           status: check.status,
           remarks: `Gate Terminal Scan (${check.time})`,
           checkInTime: check.time,
+          checkInDate: check.date || new Date().toLocaleDateString([], { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' }),
         };
       }
     });
@@ -1608,6 +1666,101 @@ export const AttendanceView: React.FC = () => {
                 className="w-full min-h-[280px] flex items-center justify-center"
               />
 
+              {/* Live HUD Floating Overlay on Camera Feed */}
+              {isCameraActive && lastScannedStudent && (
+                <div className="absolute bottom-2 left-2 right-2 z-20 bg-slate-950/90 backdrop-blur-md border-2 border-emerald-500 p-3 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-bottom-2 text-white">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                      <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400">
+                        Scanned &amp; Logged Present
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setLastScannedStudent(null)}
+                      className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded-md hover:bg-slate-800 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="mt-1 flex items-baseline justify-between gap-2">
+                    <div>
+                      <h4 className="font-extrabold text-sm sm:text-base text-white">{lastScannedStudent.fullName}</h4>
+                      <p className="text-[11px] text-slate-300 font-mono">
+                        Adm: <strong className="text-amber-400">{lastScannedStudent.admissionNumber}</strong> • {lastScannedStudent.currentClass} {lastScannedStudent.stream}
+                      </p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-lg bg-emerald-950 border border-emerald-500/50 text-emerald-300 font-bold text-xs shrink-0">
+                      PRESENT
+                    </span>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-slate-900/90 border border-slate-700/80 px-2.5 py-1.5 rounded-xl flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Time Scanned</span>
+                        <span className="font-mono font-black text-amber-300 text-xs sm:text-sm truncate block">{lastScannedTimeInfo?.time}</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/90 border border-slate-700/80 px-2.5 py-1.5 rounded-xl flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-blue-400 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Date Scanned</span>
+                        <span className="font-bold text-white text-[11px] sm:text-xs truncate block">{lastScannedTimeInfo?.fullDate || lastScannedTimeInfo?.date}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isCameraActive && alreadyCheckedInAlert && (
+                <div className="absolute bottom-2 left-2 right-2 z-20 bg-slate-950/90 backdrop-blur-md border-2 border-amber-500 p-3 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-bottom-2 text-white">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="text-[11px] font-black uppercase tracking-wider text-amber-400">
+                        Already Checked In Today
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAlreadyCheckedInAlert(null)}
+                      className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded-md hover:bg-slate-800 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="mt-1 flex items-baseline justify-between gap-2">
+                    <div>
+                      <h4 className="font-extrabold text-sm sm:text-base text-white">{alreadyCheckedInAlert.student.fullName}</h4>
+                      <p className="text-[11px] text-slate-300 font-mono">
+                        Adm: <strong className="text-amber-400">{alreadyCheckedInAlert.student.admissionNumber}</strong> • {alreadyCheckedInAlert.student.currentClass} {alreadyCheckedInAlert.student.stream}
+                      </p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-lg bg-amber-950 border border-amber-500/50 text-amber-300 font-bold text-xs shrink-0">
+                      {alreadyCheckedInAlert.status}
+                    </span>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-slate-900/90 border border-slate-700/80 px-2.5 py-1.5 rounded-xl flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Time Scanned</span>
+                        <span className="font-mono font-black text-amber-300 text-xs sm:text-sm truncate block">{alreadyCheckedInAlert.time}</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/90 border border-slate-700/80 px-2.5 py-1.5 rounded-xl flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-blue-400 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block leading-tight">Date Scanned</span>
+                        <span className="font-bold text-white text-[11px] sm:text-xs truncate block">{alreadyCheckedInAlert.date}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {!isCameraActive && (
                 <div className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center text-center p-6 space-y-3 z-10">
                   <div className="w-14 h-14 bg-slate-800 text-slate-400 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
@@ -1767,53 +1920,137 @@ export const AttendanceView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Verified Student Banner */}
+              {/* Verified Student Banner with Prominent Time & Date Scanned */}
               {lastScannedStudent && (
-                <div className="bg-slate-800/95 p-3.5 rounded-2xl border-2 border-emerald-500/80 flex items-center gap-3.5 animate-fadeIn shadow-xl">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-sm shrink-0">
-                    <CheckCircle2 className="w-7 h-7" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                        Verified & Logged Present:
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date().toLocaleTimeString()}
-                      </span>
+                <div className="bg-slate-900/95 p-4 sm:p-5 rounded-2xl border-2 border-emerald-500 shadow-2xl animate-fadeIn space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center font-black text-sm shrink-0">
+                        <CheckCircle2 className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-emerald-400 font-black uppercase tracking-wider bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-800 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3 text-emerald-400" />
+                            Verified &amp; Logged Present
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium">Just now</span>
+                        </div>
+                        <h4 className="font-extrabold text-base sm:text-lg text-white mt-1 leading-snug">
+                          {lastScannedStudent.fullName}
+                        </h4>
+                        <p className="text-xs text-slate-300">
+                          Adm No: <strong className="text-amber-400 font-mono text-sm">{lastScannedStudent.admissionNumber}</strong> • {lastScannedStudent.currentClass}{' '}
+                          {lastScannedStudent.stream} Stream • Parent: {lastScannedStudent.parentPhone || '+254 722 000 000'}
+                        </p>
+                      </div>
                     </div>
-                    <h4 className="font-bold text-sm text-white">{lastScannedStudent.fullName}</h4>
-                    <p className="text-xs text-slate-300">
-                      Adm No: <strong className="text-amber-400 font-mono">{lastScannedStudent.admissionNumber}</strong> • {lastScannedStudent.currentClass}{' '}
-                      {lastScannedStudent.stream} Stream • Guardian: {lastScannedStudent.parentPhone || '+254 722 000 000'}
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setLastScannedStudent(null)}
+                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer text-xs"
+                      title="Dismiss banner"
+                    >
+                      ✕ Dismiss
+                    </button>
+                  </div>
+
+                  {/* Two Prominent High-Visibility Callout Tiles for Time Scanned and Date Scanned */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-slate-800">
+                    <div className="bg-slate-950/90 border-2 border-emerald-500/40 p-3 rounded-xl flex items-center gap-3 shadow-inner">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                        <Clock className="w-5 h-5 text-amber-400" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Time Scanned
+                        </span>
+                        <span className="text-base sm:text-lg font-mono font-black text-amber-300">
+                          {lastScannedTimeInfo?.time || new Date().toLocaleTimeString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-950/90 border-2 border-blue-500/40 p-3 rounded-xl flex items-center gap-3 shadow-inner">
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+                        <Calendar className="w-5 h-5 text-blue-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Date Scanned
+                        </span>
+                        <span className="text-xs sm:text-sm font-bold text-white block truncate">
+                          {lastScannedTimeInfo?.fullDate || lastScannedTimeInfo?.date || new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Already Checked In Warning Banner */}
+              {/* Already Checked In Warning Banner with Time & Date Scanned */}
               {alreadyCheckedInAlert && (
-                <div className="bg-amber-950/50 p-3.5 rounded-2xl border-2 border-amber-500/90 flex items-center gap-3.5 animate-fadeIn shadow-xl">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-black text-sm shrink-0">
-                    <AlertCircle className="w-7 h-7" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
-                        Already Checked In Today:
-                      </span>
-                      <span className="text-[10px] text-amber-300/90 font-mono">
-                        Recorded at {alreadyCheckedInAlert.time}
-                      </span>
+                <div className="bg-amber-950/90 p-4 sm:p-5 rounded-2xl border-2 border-amber-500 shadow-2xl animate-fadeIn space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center font-black text-sm shrink-0">
+                        <AlertCircle className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider bg-amber-900/60 px-2 py-0.5 rounded-md border border-amber-700 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 text-amber-400" />
+                            Already Checked In Today
+                          </span>
+                        </div>
+                        <h4 className="font-extrabold text-base sm:text-lg text-white mt-1 leading-snug">
+                          {alreadyCheckedInAlert.student.fullName}
+                        </h4>
+                        <p className="text-xs text-amber-200/90">
+                          Adm No: <strong className="text-white font-mono text-sm">{alreadyCheckedInAlert.student.admissionNumber}</strong> • {alreadyCheckedInAlert.student.currentClass}{' '}
+                          {alreadyCheckedInAlert.student.stream} Stream • Status: <span className="text-emerald-400 font-bold">{alreadyCheckedInAlert.status}</span>
+                        </p>
+                      </div>
                     </div>
-                    <h4 className="font-bold text-sm text-white">{alreadyCheckedInAlert.student.fullName}</h4>
-                    <p className="text-xs text-amber-200/90">
-                      Adm No: <strong className="text-white font-mono">{alreadyCheckedInAlert.student.admissionNumber}</strong> • {alreadyCheckedInAlert.student.currentClass}{' '}
-                      {alreadyCheckedInAlert.student.stream} Stream • Status: <span className="text-emerald-400 font-bold">{alreadyCheckedInAlert.status}</span>
-                    </p>
-                    <p className="text-[11px] text-amber-300 mt-0.5 font-medium">
-                      ⚠️ Student is already checked in for today. No duplicate scan recorded.
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setAlreadyCheckedInAlert(null)}
+                      className="text-amber-300 hover:text-white p-1 rounded-lg hover:bg-amber-900/50 transition-colors cursor-pointer text-xs"
+                      title="Dismiss banner"
+                    >
+                      ✕ Dismiss
+                    </button>
+                  </div>
+
+                  {/* Two Prominent Stat Tiles for Time Scanned and Date Scanned */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-amber-900/80">
+                    <div className="bg-slate-950/90 border-2 border-amber-500/40 p-3 rounded-xl flex items-center gap-3 shadow-inner">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                        <Clock className="w-5 h-5 text-amber-400" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Recorded Scan Time
+                        </span>
+                        <span className="text-base sm:text-lg font-mono font-black text-amber-300">
+                          {alreadyCheckedInAlert.time}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-950/90 border-2 border-amber-500/40 p-3 rounded-xl flex items-center gap-3 shadow-inner">
+                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+                        <Calendar className="w-5 h-5 text-blue-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Recorded Scan Date
+                        </span>
+                        <span className="text-xs sm:text-sm font-bold text-white block truncate">
+                          {alreadyCheckedInAlert.date}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1852,10 +2089,15 @@ export const AttendanceView: React.FC = () => {
                           {evt.admissionNumber} • {evt.classLevel}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <Badge variant={evt.status === 'LATE' ? 'warning' : 'success'} size="sm">
+                      <div className="text-right flex flex-col items-end">
+                        <span className="font-mono text-xs font-bold text-slate-900 bg-white px-2 py-0.5 rounded-lg border border-slate-200 flex items-center gap-1 shadow-2xs">
+                          <Clock className="w-3 h-3 text-emerald-600" />
                           {evt.timestamp}
-                        </Badge>
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-medium mt-1 flex items-center gap-1">
+                          <Calendar className="w-2.5 h-2.5 text-blue-600" />
+                          {evt.date || new Date().toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -2292,6 +2534,7 @@ export const AttendanceView: React.FC = () => {
                       <th className="py-3 px-4">Learner Name</th>
                       <th className="py-3 px-4 font-mono">Admission No</th>
                       <th className="py-3 px-4">Stream</th>
+                      <th className="py-3 px-4 text-center">Scan Time &amp; Date</th>
                       <th className="py-3 px-4 text-center">Roll Call Status</th>
                       <th className="py-3 px-4">Remarks / Excuse Reason</th>
                     </tr>
@@ -2299,6 +2542,10 @@ export const AttendanceView: React.FC = () => {
                   <tbody className="divide-y divide-slate-100">
                     {filteredRollCallStudents.map((st, idx) => {
                       const current = statusMap[st.id] || { status: 'PRESENT', remarks: '' };
+                      const scanCheck =
+                        checkedInTodayMap[st.id] ||
+                        (st.admissionNumber ? checkedInTodayMap[st.admissionNumber] : undefined) ||
+                        (st.admissionNumber ? checkedInTodayMap[st.admissionNumber.toLowerCase()] : undefined);
 
                       return (
                         <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
@@ -2318,6 +2565,22 @@ export const AttendanceView: React.FC = () => {
                             <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-bold text-[10px]">
                               {st.stream || 'Main'}
                             </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {scanCheck ? (
+                              <div className="inline-flex flex-col items-center bg-emerald-50 border border-emerald-200/90 px-2.5 py-1 rounded-xl shadow-2xs">
+                                <span className="text-xs font-mono font-bold text-emerald-900 flex items-center gap-1">
+                                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                                  {scanCheck.time}
+                                </span>
+                                <span className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
+                                  <Calendar className="w-3 h-3 text-emerald-600" />
+                                  {scanCheck.date}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">Not scanned</span>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-1">
@@ -2867,9 +3130,18 @@ export const AttendanceView: React.FC = () => {
                             </td>
                             <td className="py-3 px-4 text-slate-600 text-xs">
                               {info?.checkInTime ? (
-                                <span className="font-mono text-slate-800 font-bold">
-                                  ⏱ {info.checkInTime}
-                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-mono text-slate-900 font-bold flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    {info.checkInTime}
+                                  </span>
+                                  {info.checkInDate && (
+                                    <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                                      <Calendar className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+                                      {info.checkInDate}
+                                    </span>
+                                  )}
+                                </div>
                               ) : info?.remarks ? (
                                 <span>{info.remarks}</span>
                               ) : (

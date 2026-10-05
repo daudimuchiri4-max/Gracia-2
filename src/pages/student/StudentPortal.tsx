@@ -8,6 +8,7 @@ import { Student, ReportCard, LibraryLoan, Announcement } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ReportCardModal } from '../../components/ui/ReportCardModal';
+import { generateStudentReportCard } from '../../utils/reportCardHelper';
 import { BookOpen, Award, FileText, Calendar, Megaphone, Clock } from 'lucide-react';
 
 export const StudentPortal: React.FC = () => {
@@ -48,57 +49,14 @@ export const StudentPortal: React.FC = () => {
   };
 
   const handleOpenReport = async () => {
-    if (!student) return;
+    if (!student || !school) return;
     try {
-      const results = await assessmentService.getResults(school!.id, { studentId: student.id });
-      let cardResults = results.map((r) => ({
-        subjectName: r.subjectName,
-        score: r.score,
-        maxScore: r.maxScore,
-        percentage: r.percentage,
-        grade: r.grade,
-        cbcRating: r.cbcRating,
-        teacherComment: r.teacherComment || 'Consistent progress and curiosity.',
-      }));
-
-      if (cardResults.length === 0) {
-        cardResults = [
-          { subjectName: 'Mathematics', score: 88, maxScore: 100, percentage: 88, grade: 'A', cbcRating: 'EE', teacherComment: 'Great problem solver.' },
-          { subjectName: 'Integrated Science', score: 85, maxScore: 100, percentage: 85, grade: 'A', cbcRating: 'EE', teacherComment: 'Enthusiastic lab partner.' },
-          { subjectName: 'English Language', score: 82, maxScore: 100, percentage: 82, grade: 'A', cbcRating: 'EE', teacherComment: 'Superb writing skills.' },
-        ];
-      }
-
-      const total = cardResults.reduce((s, r) => s + r.score, 0);
-      const avg = Math.round(total / (cardResults.length || 1));
-
-      const card: ReportCard = {
-        id: `rc_${student.id}`,
-        schoolId: school!.id,
-        studentId: student.id,
-        studentName: student.fullName,
-        admissionNumber: student.admissionNumber,
-        classLevel: student.currentClass,
-        stream: student.stream,
-        academicYear: school?.academicYear || '2026',
-        term: school?.currentTerm || 'Term 1',
-        attendanceDaysPresent: 64,
-        attendanceTotalDays: 66,
-        results: cardResults,
-        totalScore: total,
-        averagePercentage: avg,
-        overallCBCRating: 'EE',
-        classTeacherComment: `${student.firstName} shows great diligence and creativity.`,
-        headTeacherComment: 'Keep striving for the stars!',
-        openingDateNextTerm: '05/05/2026',
-        closingDateThisTerm: '03/04/2026',
-        generatedAt: new Date().toISOString(),
-      };
-
+      const card = await generateStudentReportCard(school.id, student, school.currentTerm || 'Term 1', school);
       setReportCard(card);
       setIsReportOpen(true);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      showToast('Error generating report card: ' + e.message, 'error');
     }
   };
 

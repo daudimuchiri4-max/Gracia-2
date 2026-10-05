@@ -9,6 +9,7 @@ import { Student, Invoice, Payment, ReportCard, Announcement, SchoolEvent } from
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ReportCardModal } from '../../components/ui/ReportCardModal';
+import { generateStudentReportCard } from '../../utils/reportCardHelper';
 import { ReceiptModal } from '../../components/ui/ReceiptModal';
 import {
   Users,
@@ -74,53 +75,9 @@ export const ParentPortal: React.FC = () => {
   };
 
   const handleOpenReport = async (child: Student) => {
+    if (!school) return;
     try {
-      const results = await assessmentService.getResults(school!.id, { studentId: child.id });
-      let cardResults = results.map((r) => ({
-        subjectName: r.subjectName,
-        score: r.score,
-        maxScore: r.maxScore,
-        percentage: r.percentage,
-        grade: r.grade,
-        cbcRating: r.cbcRating,
-        teacherComment: r.teacherComment || 'Commendable performance.',
-      }));
-
-      if (cardResults.length === 0) {
-        cardResults = [
-          { subjectName: 'Mathematics', score: 86, maxScore: 100, percentage: 86, grade: 'A', cbcRating: 'EE', teacherComment: 'Great mathematical accuracy.' },
-          { subjectName: 'English Language', score: 80, maxScore: 100, percentage: 80, grade: 'A', cbcRating: 'EE', teacherComment: 'Fluent reading and comprehension.' },
-          { subjectName: 'Kiswahili', score: 75, maxScore: 100, percentage: 75, grade: 'B+', cbcRating: 'ME', teacherComment: 'Insha na ufahamu vyema.' },
-          { subjectName: 'Integrated Science', score: 88, maxScore: 100, percentage: 88, grade: 'A', cbcRating: 'EE', teacherComment: 'Top score in science exploration.' },
-        ];
-      }
-
-      const total = cardResults.reduce((s, r) => s + r.score, 0);
-      const avg = Math.round(total / (cardResults.length || 1));
-
-      const card: ReportCard = {
-        id: `rc_${child.id}`,
-        schoolId: school!.id,
-        studentId: child.id,
-        studentName: child.fullName,
-        admissionNumber: child.admissionNumber,
-        classLevel: child.currentClass,
-        stream: child.stream,
-        academicYear: school?.academicYear || '2026',
-        term: school?.currentTerm || 'Term 1',
-        attendanceDaysPresent: 65,
-        attendanceTotalDays: 66,
-        results: cardResults,
-        totalScore: total,
-        averagePercentage: avg,
-        overallCBCRating: 'EE',
-        classTeacherComment: `${child.firstName} is an exemplary learner with outstanding discipline and leadership.`,
-        headTeacherComment: 'Keep up the fantastic momentum.',
-        openingDateNextTerm: '05/05/2026',
-        closingDateThisTerm: '03/04/2026',
-        generatedAt: new Date().toISOString(),
-      };
-
+      const card = await generateStudentReportCard(school.id, child, school.currentTerm || 'Term 1', school);
       setSelectedReportCard(card);
       setIsReportModalOpen(true);
     } catch (e: any) {
