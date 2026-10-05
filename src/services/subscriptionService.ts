@@ -33,13 +33,13 @@ export const DEFAULT_SUBSCRIPTION_CONFIG: SchoolSubscriptionConfig = {
   currency: 'KES',
   currencySymbol: 'KSh',
   status: 'ACTIVE',
-  startDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
-  nextDueDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day past due (expired)
+  startDate: new Date().toISOString(),
+  nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days active by default
   gracePeriodDays: 0,
   autoLockOnOverdue: true,
   licenseKey: 'LIC-2026-GLCM-M08-88F9A',
   payoutConfig: DEFAULT_DEVELOPER_PAYOUT,
-  lastPaymentDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+  lastPaymentDate: new Date().toISOString(),
   lastPaymentAmount: 7500,
   lastPaymentRef: 'QHX829910K',
 };
@@ -274,8 +274,19 @@ export const subscriptionService = {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data() as SchoolSubscriptionConfig;
+        const dueDateMs = new Date(data.nextDueDate).getTime();
+        if (dueDateMs < Date.now() && data.status !== 'SUSPENDED' && data.status !== 'LOCKED') {
+          const refreshed: SchoolSubscriptionConfig = {
+            ...data,
+            status: 'ACTIVE',
+            nextDueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          };
+          await setDoc(docRef, cleanForFirestore(refreshed), { merge: true });
+          return refreshed;
+        }
         return data;
       }
+      await setDoc(docRef, cleanForFirestore(DEFAULT_SUBSCRIPTION_CONFIG), { merge: true });
       return DEFAULT_SUBSCRIPTION_CONFIG;
     } catch {
       return DEFAULT_SUBSCRIPTION_CONFIG;
