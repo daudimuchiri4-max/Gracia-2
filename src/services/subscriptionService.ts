@@ -351,7 +351,7 @@ export const subscriptionService = {
     const diffMs = dueDateMs - now;
     const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-    const gracePeriodMs = (config.gracePeriodDays || 5) * 24 * 60 * 60 * 1000;
+    const gracePeriodMs = (config.gracePeriodDays || 0) * 24 * 60 * 60 * 1000;
     const isPastDue = diffMs < 0;
     const isWithinGracePeriod = isPastDue && Math.abs(diffMs) <= gracePeriodMs;
     const isExpiredPastGrace = isPastDue && Math.abs(diffMs) > gracePeriodMs;
@@ -369,7 +369,7 @@ export const subscriptionService = {
     }
 
     const isSuspended = computedStatus === 'SUSPENDED';
-    const isLocked = computedStatus === 'LOCKED' || isSuspended || (isPastDue && config.autoLockOnOverdue !== false);
+    const isLocked = computedStatus === 'LOCKED' || isSuspended || (isPastDue && config.autoLockOnOverdue !== false) || config.status === 'EXPIRED';
     const canAccessErp = !isLocked;
 
     return {

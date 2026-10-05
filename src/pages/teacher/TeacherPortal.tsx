@@ -273,15 +273,19 @@ export const TeacherPortal: React.FC = () => {
   useEffect(() => {
     if (!school?.id || !isTeacherAuthenticated) return;
     loadTeacherData();
-  }, [school?.id, selectedClass, selectedStream, attendanceDate, isTeacherAuthenticated]);
+  }, [school?.id, selectedClass, selectedStream, attendanceDate, selectedTerm, selectedSubjectId, isTeacherAuthenticated]);
 
   const loadTeacherData = async () => {
     setLoading(true);
     try {
-      const [stdList, subList, existingAttList] = await Promise.all([
+      const activeSubjectId = selectedSubjectId || '';
+      const expectedAssessmentId = `ass_${selectedClass}_${selectedStream}_${activeSubjectId}_${selectedTerm.replace(/\s+/g, '')}`;
+
+      const [stdList, subList, existingAttList, existingResults] = await Promise.all([
         studentService.getStudents(school!.id, { classLevel: selectedClass, stream: selectedStream }),
         academicService.getSubjects(school!.id),
         attendanceService.getAttendanceRecords(school!.id, { classLevel: selectedClass, date: attendanceDate }),
+        activeSubjectId ? assessmentService.getResults(school!.id, { term: selectedTerm, assessmentId: expectedAssessmentId }) : Promise.resolve([]),
       ]);
       setStudents(stdList);
       setSubjects(subList);
@@ -295,7 +299,11 @@ export const TeacherPortal: React.FC = () => {
 
       stdList.forEach((s) => {
         initialAtt[s.id] = 'PRESENT';
-        initialMarks[s.id] = { score: 80, comment: 'Good participation' };
+        const res = existingResults.find((r) => r.studentId === s.id);
+        initialMarks[s.id] = {
+          score: res ? res.score : 75,
+          comment: res ? (res.teacherComment || '') : '',
+        };
       });
 
       // If existing attendance records found for today / this date, hydrate scan records

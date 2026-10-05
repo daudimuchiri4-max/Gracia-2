@@ -41,7 +41,7 @@ export async function generateStudentReportCard(
 ): Promise<ReportCard> {
   // 1. Fetch all student results & assessments in parallel
   const [allResults, assessments] = await Promise.all([
-    assessmentService.getResults(schoolId, { studentId: student.id }),
+    assessmentService.getResults(schoolId, { studentId: student.id, term: targetTerm }),
     assessmentService.getAssessments(schoolId, { term: targetTerm }),
   ]);
 
