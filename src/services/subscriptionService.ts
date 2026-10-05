@@ -33,13 +33,13 @@ export const DEFAULT_SUBSCRIPTION_CONFIG: SchoolSubscriptionConfig = {
   currency: 'KES',
   currencySymbol: 'KSh',
   status: 'ACTIVE',
-  startDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  nextDueDate: new Date(Date.now() + 25 * 24 * 60 * 60 * 1000).toISOString(), // 25 days remaining
-  gracePeriodDays: 5,
+  startDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+  nextDueDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day past due (expired)
+  gracePeriodDays: 0,
   autoLockOnOverdue: true,
   licenseKey: 'LIC-2026-GLCM-M08-88F9A',
   payoutConfig: DEFAULT_DEVELOPER_PAYOUT,
-  lastPaymentDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  lastPaymentDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
   lastPaymentAmount: 7500,
   lastPaymentRef: 'QHX829910K',
 };
@@ -362,18 +362,14 @@ export const subscriptionService = {
       computedStatus = 'SUSPENDED';
     } else if (config.status === 'LOCKED') {
       computedStatus = 'LOCKED';
-    } else if (isExpiredPastGrace && config.autoLockOnOverdue) {
+    } else if (isPastDue && config.autoLockOnOverdue !== false) {
       computedStatus = 'LOCKED';
-    } else if (isWithinGracePeriod) {
-      computedStatus = 'GRACE_PERIOD';
-    } else if (isPastDue) {
-      computedStatus = 'EXPIRED';
     } else {
       computedStatus = 'ACTIVE';
     }
 
     const isSuspended = computedStatus === 'SUSPENDED';
-    const isLocked = computedStatus === 'LOCKED' || isSuspended;
+    const isLocked = computedStatus === 'LOCKED' || isSuspended || (isPastDue && config.autoLockOnOverdue !== false);
     const canAccessErp = !isLocked;
 
     return {
